@@ -9,6 +9,8 @@ class PainelValidacaoHorario extends StatelessWidget {
 
   final ValidacaoHorario validacao;
 
+  static const double alturaMaxima = 140;
+
   @override
   Widget build(BuildContext context) {
     final ok = validacao.ok;
@@ -31,23 +33,39 @@ class PainelValidacaoHorario extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: validacao.problemas
-                  .map(
-                    (problema) => Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Text(
-                        problema,
-                        style: TextStyle(
-                          color: Colors.red.shade800,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
+          // Altura limitada com rolagem: muitos problemas não podem
+          // empurrar a grade para fora da tela.
+          : ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: alturaMaxima),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${validacao.problemas.length} problema(s)',
+                      style: TextStyle(
+                        color: Colors.red.shade900,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    ...validacao.problemas.map(
+                      (problema) => Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text(
+                          problema,
+                          style: TextStyle(
+                            color: Colors.red.shade800,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
                     ),
-                  )
-                  .toList(),
+                  ],
+                ),
+              ),
             ),
     );
   }

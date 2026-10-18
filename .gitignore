@@ -43,3 +43,23 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Flutter (arquivo antigo de plugins, gerado)
+.flutter-plugins
+
+# Configurações locais do Claude Code (caminhos desta máquina)
+.claude/
+
+# Logs e cache de ferramentas (Firebase CLI, Vercel CLI)
+firepit-log.txt
+*-debug.log
+.firebase/
+.vercel/
+
+# Variáveis de ambiente e segredos locais
+.env
+.env.*
+
+# Arquivos do Windows / OneDrive
+Thumbs.db
+desktop.ini

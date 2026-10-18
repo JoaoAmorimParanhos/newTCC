@@ -9,9 +9,64 @@ import 'package:flutter_test_project/model/sala/sala.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+/// Trecho de um turno de um dia no PDF: [tamanho] horários seguidos a partir
+/// de [inicio] (posição dentro do turno) com as mesmas [aulas].
+class SegmentoGrade {
+  const SegmentoGrade({
+    required this.inicio,
+    required this.tamanho,
+    required this.aulas,
+  });
+
+  final int inicio;
+  final int tamanho;
+
+  /// Aulas do primeiro horário do trecho (vazio = horário sem aula).
+  final List<Aula> aulas;
+}
+
+/// Junta horários seguidos com exatamente as mesmas aulas (matéria,
+/// professor, sala e grupo) num só trecho. Horários vazios ficam separados.
+///
+/// [celulas] são as aulas de cada horário de um turno de um dia, em ordem.
+List<SegmentoGrade> agruparAulasSeguidas(List<List<Aula>> celulas) {
+  String assinatura(List<Aula> aulas) {
+    final partes = [
+      for (final a in aulas)
+        '${a.grupo}|${a.idMateria}|${a.idProfessor}|${a.idSala}',
+    ]..sort();
+    return partes.join(';');
+  }
+
+  final segmentos = <SegmentoGrade>[];
+  var i = 0;
+  while (i < celulas.length) {
+    final atual = celulas[i];
+    var tamanho = 1;
+    if (atual.isNotEmpty) {
+      final chave = assinatura(atual);
+      while (i + tamanho < celulas.length &&
+          celulas[i + tamanho].isNotEmpty &&
+          assinatura(celulas[i + tamanho]) == chave) {
+        tamanho++;
+      }
+    }
+    segmentos.add(SegmentoGrade(inicio: i, tamanho: tamanho, aulas: atual));
+    i += tamanho;
+  }
+  return segmentos;
+}
+
 /// Gera PDF paisagem: uma página por turma (incluindo grades vazias).
 class ExportadorHorarioPdf {
   const ExportadorHorarioPdf();
+
+  static const double _alturaCabecalho = 18;
+  static const double _alturaAlmoco = 16;
+  static const double _alturaLinha = 34;
+  static const double _larguraRotulo = 42;
+  static const _corBorda = PdfColors.grey600;
+  static const double _espessuraBorda = 0.5;
 
   Future<Uint8List> gerar({
     required List<Curso> cursos,
@@ -60,13 +115,10 @@ class ExportadorHorarioPdf {
                 ),
               ],
               pw.SizedBox(height: 12),
-              pw.Expanded(
-                child: _tabelaGrade(
-                  porCelula: porCelula,
-                  mapaMaterias: mapaMaterias,
-                  mapaProfessores: mapaProfessores,
-                  mapaSalas: mapaSalas,
-                ),
+              _grade(
+                porCelula: porCelula,
+                mapaMaterias: mapaMaterias,
+                mapaProfessores: mapaProfessores,
               ),
             ],
           ),
@@ -88,98 +140,123 @@ class ExportadorHorarioPdf {
     return doc.save();
   }
 
-  pw.Widget _tabelaGrade({
+  /// Grade montada em colunas (uma por dia) para que aulas seguidas iguais
+  /// ocupem várias linhas sem mudar o tamanho da grade.
+  pw.Widget _grade({
     required Map<CelulaGrade, List<Aula>> porCelula,
     required Map<String, String> mapaMaterias,
     required Map<String, String> mapaProfessores,
-    required Map<String, Sala> mapaSalas,
   }) {
-    return pw.Table(
-      border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
-      columnWidths: {
-        0: const pw.FixedColumnWidth(42),
-        for (var i = 1; i <= GradeHoraria.dias.length; i++)
-          i: const pw.FlexColumnWidth(),
-      },
-      children: [
-        pw.TableRow(
-          decoration: const pw.BoxDecoration(color: PdfColors.grey300),
-          children: [
-            _cabecalho(''),
-            ...GradeHoraria.dias.map(_cabecalho),
-          ],
-        ),
-        for (var i = 0; i < GradeHoraria.quantidadePeriodosManha; i++)
-          _linhaPeriodo(
-            rotulo: GradeHoraria.periodos[i],
-            indicePeriodo: i,
-            porCelula: porCelula,
+    final manha = [
+      for (var p = 0; p < GradeHoraria.quantidadePeriodosManha; p++) p,
+    ];
+    final tarde = [
+      for (var p = GradeHoraria.inicioTarde; p < GradeHoraria.periodos.length; p++)
+        p,
+    ];
+
+    List<pw.Widget> turno(int dia, List<int> periodos) => [
+      for (final segmento in agruparAulasSeguidas([
+        for (final p in periodos)
+          porCelula[CelulaGrade(indiceDia: dia, indicePeriodo: p)] ?? const [],
+      ]))
+        _celula(
+          altura: _alturaLinha * segmento.tamanho,
+          child: _conteudoAulas(
+            segmento.aulas,
             mapaMaterias: mapaMaterias,
             mapaProfessores: mapaProfessores,
-            mapaSalas: mapaSalas,
           ),
-        pw.TableRow(
-          decoration: const pw.BoxDecoration(color: PdfColors.grey200),
-          children: [
-            _celulaTexto('Almoço', negrito: true, centralizado: true),
-            for (var d = 0; d < GradeHoraria.dias.length; d++)
-              _celulaTexto('', centralizado: true),
-          ],
         ),
-        for (var i = GradeHoraria.inicioTarde;
-            i < GradeHoraria.periodos.length;
-            i++)
-          _linhaPeriodo(
-            rotulo: GradeHoraria.periodos[i],
-            indicePeriodo: i,
-            porCelula: porCelula,
-            mapaMaterias: mapaMaterias,
-            mapaProfessores: mapaProfessores,
-            mapaSalas: mapaSalas,
+    ];
+
+    return pw.Container(
+      decoration: const pw.BoxDecoration(
+        border: pw.Border(
+          left: pw.BorderSide(color: _corBorda, width: _espessuraBorda),
+          top: pw.BorderSide(color: _corBorda, width: _espessuraBorda),
+        ),
+      ),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.SizedBox(
+            width: _larguraRotulo,
+            child: pw.Column(
+              children: [
+                _celula(
+                  altura: _alturaCabecalho,
+                  cor: PdfColors.grey300,
+                  child: _texto('', negrito: true),
+                ),
+                for (final p in manha)
+                  _celula(
+                    altura: _alturaLinha,
+                    child: _texto(GradeHoraria.periodos[p], negrito: true),
+                  ),
+                _celula(
+                  altura: _alturaAlmoco,
+                  cor: PdfColors.grey200,
+                  child: _texto('Almoço', negrito: true),
+                ),
+                for (final p in tarde)
+                  _celula(
+                    altura: _alturaLinha,
+                    child: _texto(GradeHoraria.periodos[p], negrito: true),
+                  ),
+              ],
+            ),
           ),
-      ],
+          for (var dia = 0; dia < GradeHoraria.dias.length; dia++)
+            pw.Expanded(
+              child: pw.Column(
+                children: [
+                  _celula(
+                    altura: _alturaCabecalho,
+                    cor: PdfColors.grey300,
+                    child: _texto(GradeHoraria.dias[dia], negrito: true),
+                  ),
+                  ...turno(dia, manha),
+                  _celula(
+                    altura: _alturaAlmoco,
+                    cor: PdfColors.grey200,
+                    child: pw.SizedBox(),
+                  ),
+                  ...turno(dia, tarde),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 
-  pw.TableRow _linhaPeriodo({
-    required String rotulo,
-    required int indicePeriodo,
-    required Map<CelulaGrade, List<Aula>> porCelula,
-    required Map<String, String> mapaMaterias,
-    required Map<String, String> mapaProfessores,
-    required Map<String, Sala> mapaSalas,
+  /// Célula com borda à direita e embaixo (o contorno de fora fecha o resto).
+  pw.Widget _celula({
+    required double altura,
+    required pw.Widget child,
+    PdfColor? cor,
   }) {
-    return pw.TableRow(
-      children: [
-        _celulaTexto(rotulo, negrito: true, centralizado: true),
-        for (var dia = 0; dia < GradeHoraria.dias.length; dia++)
-          _celulaAulas(
-            porCelula[CelulaGrade(indiceDia: dia, indicePeriodo: indicePeriodo)] ??
-                const [],
-            mapaMaterias: mapaMaterias,
-            mapaProfessores: mapaProfessores,
-            mapaSalas: mapaSalas,
-          ),
-      ],
+    return pw.Container(
+      height: altura,
+      alignment: pw.Alignment.center,
+      decoration: pw.BoxDecoration(
+        color: cor,
+        border: const pw.Border(
+          right: pw.BorderSide(color: _corBorda, width: _espessuraBorda),
+          bottom: pw.BorderSide(color: _corBorda, width: _espessuraBorda),
+        ),
+      ),
+      child: child,
     );
   }
 
-  pw.Widget _cabecalho(String texto) => _celulaTexto(
-        texto,
-        negrito: true,
-        centralizado: true,
-      );
-
-  pw.Widget _celulaTexto(
-    String texto, {
-    bool negrito = false,
-    bool centralizado = false,
-  }) {
+  pw.Widget _texto(String texto, {bool negrito = false}) {
     return pw.Padding(
       padding: const pw.EdgeInsets.all(3),
       child: pw.Text(
         texto,
-        textAlign: centralizado ? pw.TextAlign.center : pw.TextAlign.left,
+        textAlign: pw.TextAlign.center,
         style: pw.TextStyle(
           fontSize: 8,
           fontWeight: negrito ? pw.FontWeight.bold : pw.FontWeight.normal,
@@ -188,32 +265,26 @@ class ExportadorHorarioPdf {
     );
   }
 
-  pw.Widget _celulaAulas(
+  /// Uma aula, ou os dois grupos de uma aula geminada lado a lado.
+  pw.Widget _conteudoAulas(
     List<Aula> aulas, {
     required Map<String, String> mapaMaterias,
     required Map<String, String> mapaProfessores,
-    required Map<String, Sala> mapaSalas,
   }) {
-    if (aulas.isEmpty) {
-      return pw.Padding(
-        padding: const pw.EdgeInsets.all(3),
-        child: pw.SizedBox(height: 28),
-      );
-    }
+    if (aulas.isEmpty) return pw.SizedBox();
 
-    return pw.Container(
-      color: PdfColors.green50,
-      padding: const pw.EdgeInsets.all(2),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.center,
-        mainAxisAlignment: pw.MainAxisAlignment.center,
-        children: [
-          for (final aula in aulas) ...[
+    pw.Widget umaAula(Aula aula, {required bool comGrupo}) {
+      final materia = mapaMaterias[aula.idMateria] ?? 'Matéria';
+      return pw.Padding(
+        padding: const pw.EdgeInsets.all(2),
+        child: pw.Column(
+          mainAxisAlignment: pw.MainAxisAlignment.center,
+          children: [
             pw.Text(
-              'G${aula.grupo} ${mapaMaterias[aula.idMateria] ?? 'Matéria'}',
+              comGrupo ? 'G${aula.grupo} $materia' : materia,
               textAlign: pw.TextAlign.center,
-              maxLines: 1,
-              style: pw.TextStyle(fontSize: 6.5, fontWeight: pw.FontWeight.bold),
+              maxLines: 2,
+              style: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold),
             ),
             pw.Text(
               mapaProfessores[aula.idProfessor] ?? 'Professor',
@@ -222,8 +293,21 @@ class ExportadorHorarioPdf {
               style: const pw.TextStyle(fontSize: 6),
             ),
           ],
+        ),
+      );
+    }
+
+    if (aulas.length == 1) return umaAula(aulas.single, comGrupo: false);
+
+    return pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.center,
+      children: [
+        for (var i = 0; i < aulas.length; i++) ...[
+          if (i > 0)
+            pw.Container(width: _espessuraBorda, color: PdfColors.grey400),
+          pw.Expanded(child: umaAula(aulas[i], comGrupo: true)),
         ],
-      ),
+      ],
     );
   }
 }

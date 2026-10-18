@@ -139,6 +139,30 @@ class _Page3State extends ConsumerState<Page3> {
     }
   }
 
+  Future<void> _aoSoltarAula({
+    required Aula aula,
+    required CelulaGrade destino,
+    required List<Aula> aulas,
+    required List<AulaGeminadaCurso> aulasGeminadas,
+    required List<Professor> professores,
+    required List<IndisponibilidadeProfessor> indisponibilidades,
+  }) async {
+    if (_ocupado) return;
+
+    // Bloqueia a grade enquanto grava, para não começar outro arraste
+    // com dados antigos; a recusa (se houver) aparece embaixo.
+    return _comOcupado(
+      () => _acoes.moverAula(
+        aula: aula,
+        destino: destino,
+        todasAulas: aulas,
+        aulasGeminadas: aulasGeminadas,
+        professores: professores,
+        indisponibilidades: indisponibilidades,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cursosAsync = ref.watch(provedorCursos);
@@ -163,11 +187,24 @@ class _Page3State extends ConsumerState<Page3> {
     final salas = salasAsync.value ?? const <Sala>[];
     final cursos = cursosAsync.value ?? const <Curso>[];
 
-    final selecionado =
-        _cursoSelecionado != null &&
-            cursos.any((c) => c.id == _cursoSelecionado!.id)
-        ? _cursoSelecionado
-        : null;
+    // Só permite gerar com todos os dados carregados (lista vazia por
+    // carregamento faria o gerador apagar a grade sem recriá-la).
+    final dadosProntos = [
+      cursosAsync,
+      aulasAsync,
+      cargasAsync,
+      aulasGeminadasAsync,
+      materiasAsync,
+      professoresAsync,
+      ligacoesAsync,
+      indisponibilidadesAsync,
+      salasAsync,
+    ].every((async) => async.hasValue && !async.hasError);
+
+    // Usa a versão atual do curso (dados em tempo real), não a da seleção.
+    final selecionado = _cursoSelecionado == null
+        ? null
+        : cursos.where((c) => c.id == _cursoSelecionado!.id).firstOrNull;
     if (_cursoSelecionado != null && selecionado == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) setState(() => _cursoSelecionado = null);
@@ -194,7 +231,7 @@ class _Page3State extends ConsumerState<Page3> {
                 indisponibilidades: indisponibilidades,
                 salas: salas,
                 ocupado: _ocupado,
-                aoGerar: _ocupado || cursos.isEmpty
+                aoGerar: _ocupado || !dadosProntos || cursos.isEmpty
                     ? null
                     : () => _gerarTodos(
                         cursos: cursos,
@@ -216,6 +253,16 @@ class _Page3State extends ConsumerState<Page3> {
                       ),
                 aoLimpar: _ocupado ? null : () => _limparCurso(selecionado),
                 aoFechar: () => setState(() => _cursoSelecionado = null),
+                aoSoltarAula:
+                    ({required Aula aula, required CelulaGrade destino}) =>
+                        _aoSoltarAula(
+                          aula: aula,
+                          destino: destino,
+                          aulas: aulas,
+                          aulasGeminadas: aulasGeminadas,
+                          professores: professores,
+                          indisponibilidades: indisponibilidades,
+                        ),
                 aoTocarCelula: ({required CelulaGrade celula}) =>
                     _aoTocarCelula(
                       curso: selecionado,

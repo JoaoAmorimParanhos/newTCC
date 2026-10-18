@@ -11,6 +11,7 @@ import 'package:flutter_test_project/model/professor/indisponibilidade_professor
 import 'package:flutter_test_project/model/professor/professor.dart';
 import 'package:flutter_test_project/model/professor/professor_materia.dart';
 import 'package:flutter_test_project/model/sala/sala.dart';
+import 'package:flutter_test_project/pages/page3/helpers/acoes_horario.dart';
 import 'package:flutter_test_project/pages/page3/helpers/regras_horario.dart';
 import 'package:flutter_test_project/pages/page3/widgets/celula_horario.dart';
 import 'package:flutter_test_project/pages/page3/widgets/painel_validacao_horario.dart';
@@ -36,6 +37,7 @@ class PainelGradeCurso extends ConsumerWidget {
     required this.aoLimpar,
     required this.aoFechar,
     required this.aoTocarCelula,
+    this.aoSoltarAula,
   });
 
   final Curso curso;
@@ -54,6 +56,10 @@ class PainelGradeCurso extends ConsumerWidget {
   final VoidCallback? aoLimpar;
   final VoidCallback aoFechar;
   final Future<void> Function({required CelulaGrade celula}) aoTocarCelula;
+
+  /// Aula arrastada solta em [destino] (aula comum ou conjunto geminado).
+  final Future<void> Function({required Aula aula, required CelulaGrade destino})?
+  aoSoltarAula;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -138,6 +144,18 @@ class PainelGradeCurso extends ConsumerWidget {
                       salasPorId: mapaSalas,
                       ocupado: ocupado,
                       aoTocar: () => aoTocarCelula(celula: celula),
+                      aoSoltar: aoSoltarAula == null
+                          ? null
+                          : (aula) => aoSoltarAula!(aula: aula, destino: celula),
+                      motivoParaNaoSoltar: (aula) =>
+                          AcoesHorario.motivoParaNaoSoltar(
+                            aula: aula,
+                            destino: celula,
+                            todasAulas: aulas,
+                            aulasGeminadas: aulasGeminadas,
+                            professores: professores,
+                            indisponibilidades: indisponibilidades,
+                          ),
                     );
                   },
                 ),

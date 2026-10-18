@@ -16,6 +16,8 @@ class CelulaHorario extends StatelessWidget {
     required this.salasPorId,
     required this.ocupado,
     required this.aoTocar,
+    this.aoSoltar,
+    this.motivoParaNaoSoltar,
   });
 
   final CelulaGrade celula;
@@ -26,27 +28,50 @@ class CelulaHorario extends StatelessWidget {
   final bool ocupado;
   final VoidCallback? aoTocar;
 
+  /// Chamado quando uma aula arrastada é solta nesta célula.
+  final void Function(Aula aula)? aoSoltar;
+
+  /// Motivo para recusar a aula nesta célula (null = pode soltar).
+  /// Usado só para pintar a célula enquanto a aula passa por cima.
+  final String? Function(Aula aula)? motivoParaNaoSoltar;
+
   @override
   Widget build(BuildContext context) {
     final ordenadas = List<Aula>.from(aulas)
       ..sort((a, b) => a.grupo.compareTo(b.grupo));
 
-    return Padding(
-      padding: const EdgeInsets.all(4),
-      child: Material(
-        color: ordenadas.isEmpty ? Colors.grey.shade100 : IfprColors.verdeFundo,
-        borderRadius: BorderRadius.circular(8),
-        child: InkWell(
-          onTap: ocupado ? null : aoTocar,
-          borderRadius: BorderRadius.circular(8),
-          child: SizedBox(
-            height: ordenadas.length > 1 ? 88 : 68,
-            child: ordenadas.isEmpty
-                ? const Center(
-                    child: Icon(Icons.add, color: IfprColors.cinzaClaro),
-                  )
-                : ordenadas.length == 1
-                    ? _conteudoAula(ordenadas.first)
+    return DragTarget<Aula>(
+      // Aceita sempre para poder explicar a recusa na mensagem.
+      onWillAcceptWithDetails: (_) => !ocupado && aoSoltar != null,
+      onAcceptWithDetails: (details) => aoSoltar?.call(details.data),
+      builder: (context, candidatas, _) {
+        final arrastando = candidatas.whereType<Aula>().firstOrNull;
+        final destaque = arrastando == null
+            ? null
+            : (motivoParaNaoSoltar?.call(arrastando) == null
+                  ? Colors.green.shade100
+                  : Colors.red.shade100);
+
+        return Padding(
+          padding: const EdgeInsets.all(4),
+          child: Material(
+            color:
+                destaque ??
+                (ordenadas.isEmpty
+                    ? Colors.grey.shade100
+                    : IfprColors.verdeFundo),
+            borderRadius: BorderRadius.circular(8),
+            child: InkWell(
+              onTap: ocupado ? null : aoTocar,
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                height: ordenadas.length > 1 ? 88 : 68,
+                child: ordenadas.isEmpty
+                    ? const Center(
+                        child: Icon(Icons.add, color: IfprColors.cinzaClaro),
+                      )
+                    : ordenadas.length == 1
+                    ? _arrastavel(ordenadas.first)
                     : Row(
                         children: [
                           for (var i = 0; i < ordenadas.length; i++) ...[
@@ -55,13 +80,33 @@ class CelulaHorario extends StatelessWidget {
                                 width: 1,
                                 color: IfprColors.verde.withValues(alpha: 0.35),
                               ),
-                            Expanded(child: _conteudoAula(ordenadas[i])),
+                            Expanded(child: _arrastavel(ordenadas[i])),
                           ],
                         ],
                       ),
+              ),
+            ),
           ),
-        ),
+        );
+      },
+    );
+  }
+
+  Widget _arrastavel(Aula aula) {
+    final conteudo = _conteudoAula(aula);
+    if (aoSoltar == null) return conteudo;
+
+    return Draggable<Aula>(
+      data: aula,
+      maxSimultaneousDrags: ocupado ? 0 : 1,
+      feedback: Material(
+        elevation: 6,
+        color: IfprColors.verdeFundo,
+        borderRadius: BorderRadius.circular(8),
+        child: SizedBox(width: 140, height: 68, child: conteudo),
       ),
+      childWhenDragging: Opacity(opacity: 0.35, child: conteudo),
+      child: conteudo,
     );
   }
 

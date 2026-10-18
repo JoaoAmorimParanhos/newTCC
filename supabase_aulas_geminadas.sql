@@ -17,3 +17,46 @@ create table if not exists public.tb_curso_aula_geminada (
   constraint tb_curso_aula_geminada_unica
     unique (id_curso, id_materia_a, id_materia_b)
 );
+
+-- Quantas aulas o par tem juntas na semana.
+alter table public.tb_curso_aula_geminada
+  add column if not exists quantidade_periodos integer not null default 1;
+
+-- Em quantos blocos de aulas seguidas essas aulas são divididas.
+-- Pares antigos ficam com blocos = aulas (aulas soltas, como antes).
+alter table public.tb_curso_aula_geminada
+  add column if not exists quantidade_blocos integer;
+update public.tb_curso_aula_geminada
+  set quantidade_blocos = quantidade_periodos
+  where quantidade_blocos is null;
+alter table public.tb_curso_aula_geminada
+  alter column quantidade_blocos set default 1,
+  alter column quantidade_blocos set not null;
+alter table public.tb_curso_aula_geminada
+  drop constraint if exists tb_curso_aula_geminada_blocos_validos;
+alter table public.tb_curso_aula_geminada
+  add constraint tb_curso_aula_geminada_blocos_validos
+  check (quantidade_blocos >= 1 and quantidade_blocos <= quantidade_periodos);
+
+-- Colunas usadas pelo app que não estavam neste script.
+-- "if not exists" deixa seguro rodar de novo num banco que já as tenha.
+
+alter table public.tb_curso
+  add column if not exists periodo_preferencia text not null default 'manha_tarde';
+
+alter table public.tb_curso_materia
+  add column if not exists tamanho_bloco integer not null default 1;
+
+do $$
+begin
+  if not exists (select 1 from pg_type where typname = 'tipo_sala') then
+    create type public.tipo_sala as enum ('sala_aula', 'laboratorio_informatica');
+  end if;
+end $$;
+
+alter table public.tb_sala
+  add column if not exists tipo public.tipo_sala not null default 'sala_aula';
+
+alter table public.tb_aula
+  add column if not exists grupo integer not null default 1
+  check (grupo in (1, 2));

@@ -81,6 +81,25 @@ class ValidadorHorario {
       }
     }
 
+    // Quantos horários cada par realmente ocupa junto vs. o configurado.
+    for (final par in aulasGeminadas.where((p) => p.idCurso == idCurso)) {
+      final juntas = porCelula.values
+          .where(
+            (lista) =>
+                lista.length == 2 &&
+                par.formaPar(lista.first.idMateria, lista.last.idMateria),
+          )
+          .length;
+      if (juntas != par.quantidadePeriodos) {
+        final nomeA = subjectById[par.idMateriaA] ?? 'Matéria';
+        final nomeB = subjectById[par.idMateriaB] ?? 'Matéria';
+        problemas.add(
+          'Aula geminada $nomeA + $nomeB: '
+          '$juntas/${par.quantidadePeriodos} aulas juntas',
+        );
+      }
+    }
+
     for (final aula in courseAulas) {
       final celula = aula.celula;
       final nomeProfessor =

@@ -72,10 +72,11 @@ class _Page2State extends ConsumerState<Page2> {
         unavailabilityAsync.value ?? const <IndisponibilidadeProfessor>[];
 
     // Se o professor foi excluído na Página 1, limpa a seleção.
-    final selecionado = _professorSelecionado != null &&
-            professores.any((p) => p.id == _professorSelecionado!.id)
-        ? _professorSelecionado
-        : null;
+    final selecionado = _professorSelecionado == null
+        ? null
+        : professores
+              .where((p) => p.id == _professorSelecionado!.id)
+              .firstOrNull;
     if (_professorSelecionado != null && selecionado == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) setState(() => _professorSelecionado = null);

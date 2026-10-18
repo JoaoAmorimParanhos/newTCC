@@ -164,46 +164,52 @@ class GeradorHorario {
       final fasesPeriodo = _fasesPeriodo(curso.preferenciaPeriodo);
 
       for (final tamanhoBloco in blocos) {
+        // 1ª tentativa: um bloco da matéria por dia (espalha na semana).
+        // 2ª tentativa: aceita repetir o dia quando a carga não cabe em 5 dias.
         var alocado = false;
-
-        for (final faixaPeriodos in fasesPeriodo) {
+        for (final permitirMesmoDia in const [false, true]) {
           if (alocado) break;
 
-          for (var dia = 0; dia < GradeHoraria.dias.length && !alocado; dia++) {
-            for (final periodoInicio in _periodosInicio(
-              faixaPeriodos,
-              tamanhoBloco,
-            )) {
-              if (_tentarColocarBloco(
-                idCurso: idCurso,
-                idMateria: carga.idMateria,
-                dia: dia,
-                periodoInicio: periodoInicio,
-                tamanhoBloco: tamanhoBloco,
-                idSala: curso.idSala,
-                professoresMateria: professoresMateria,
-                indisponibilidades: indisponibilidades,
-                trabalhando: trabalhando,
-                novasAulas: novasAulas,
+          for (final faixaPeriodos in fasesPeriodo) {
+            if (alocado) break;
+
+            for (
+              var dia = 0;
+              dia < GradeHoraria.dias.length && !alocado;
+              dia++
+            ) {
+              for (final periodoInicio in _periodosInicio(
+                faixaPeriodos,
+                tamanhoBloco,
               )) {
-                alocado = true;
-                restante -= tamanhoBloco;
-                break;
+                if (_tentarColocarBloco(
+                  idCurso: idCurso,
+                  idMateria: carga.idMateria,
+                  dia: dia,
+                  periodoInicio: periodoInicio,
+                  tamanhoBloco: tamanhoBloco,
+                  idSala: curso.idSala,
+                  professoresMateria: professoresMateria,
+                  indisponibilidades: indisponibilidades,
+                  trabalhando: trabalhando,
+                  novasAulas: novasAulas,
+                  permitirMesmoDia: permitirMesmoDia,
+                )) {
+                  alocado = true;
+                  restante -= tamanhoBloco;
+                  break;
+                }
               }
             }
           }
         }
-
-        if (!alocado) {
-          falhas.add(
-            'Não coube bloco de $tamanhoBloco aula(s) de '
-            '${rotulo(carga.idMateria)}.',
-          );
-        }
       }
 
       if (restante > 0) {
-        falhas.add('Faltam $restante aula(s) de ${rotulo(carga.idMateria)}.');
+        falhas.add(
+          'Faltam $restante aula(s) de ${rotulo(carga.idMateria)} '
+          '(blocos de ${carga.tamanhoBloco}).',
+        );
       }
     }
 
@@ -323,86 +329,103 @@ class GeradorHorario {
       if (excedente > 0) {
         falhas.add(
           'Aula geminada de $nomeA e $nomeB pede ${par.quantidadePeriodos} '
-          'período(s), mas a carga só comporta $restante.',
+          'aula(s), mas a carga só comporta $restante.',
         );
       }
 
-      while (restante > 0) {
-        if (_tentarColocarPar(
+      // Divide as aulas do par em blocos de aulas seguidas
+      // (ex.: 8 aulas em 2 blocos = 2 conjuntos de 4).
+      var faltando = 0;
+      for (final tamanho in dividirEmBlocos(restante, par.quantidadeBlocos)) {
+        if (!_tentarColocarBlocoPar(
           curso: curso,
           idMateriaA: par.idMateriaA,
           idMateriaB: par.idMateriaB,
+          tamanhoBloco: tamanho,
           professoresA: professoresA,
           professoresB: professoresB,
           indisponibilidades: indisponibilidades,
           trabalhando: trabalhando,
           novasAulas: novasAulas,
         )) {
-          restante--;
-          continue;
+          faltando += tamanho;
         }
+      }
+      if (faltando > 0) {
         falhas.add(
           'Não coube aula geminada de $nomeA e $nomeB '
-          '($restante período(s) faltando).',
+          '($faltando aula(s) faltando).',
         );
-        break;
       }
     }
   }
 
-  bool _tentarColocarPar({
+  /// Coloca um bloco de aulas seguidas do par: G1 numa matéria e G2 na outra,
+  /// com os mesmos dois professores durante todo o bloco.
+  bool _tentarColocarBlocoPar({
     required Curso curso,
     required String idMateriaA,
     required String idMateriaB,
+    required int tamanhoBloco,
     required List<Professor> professoresA,
     required List<Professor> professoresB,
     required List<IndisponibilidadeProfessor> indisponibilidades,
     required List<Aula> trabalhando,
     required List<Aula> novasAulas,
   }) {
-    for (final faixaPeriodos in _fasesPeriodo(curso.preferenciaPeriodo)) {
-      for (var dia = 0; dia < GradeHoraria.dias.length; dia++) {
-        for (final periodo in faixaPeriodos) {
-          for (final professorA in professoresA) {
-            for (final professorB in professoresB) {
-              if (professorA.id == professorB.id) continue;
-              if (!_parCabe(
-                idCurso: curso.id,
-                idMateriaA: idMateriaA,
-                idMateriaB: idMateriaB,
-                idProfessorA: professorA.id,
-                idProfessorB: professorB.id,
-                dia: dia,
-                periodo: periodo,
-                idSala: curso.idSala,
-                indisponibilidades: indisponibilidades,
-                trabalhando: trabalhando,
-              )) {
-                continue;
+    // 1ª tentativa: blocos do par em dias diferentes; 2ª: aceita repetir o dia.
+    for (final permitirMesmoDia in const [false, true]) {
+      for (final faixaPeriodos in _fasesPeriodo(curso.preferenciaPeriodo)) {
+        for (var dia = 0; dia < GradeHoraria.dias.length; dia++) {
+          for (final periodoInicio in _periodosInicio(
+            faixaPeriodos,
+            tamanhoBloco,
+          )) {
+            for (final professorA in professoresA) {
+              for (final professorB in professoresB) {
+                if (professorA.id == professorB.id) continue;
+                if (!_blocoParCabe(
+                  idCurso: curso.id,
+                  idMateriaA: idMateriaA,
+                  idMateriaB: idMateriaB,
+                  idProfessorA: professorA.id,
+                  idProfessorB: professorB.id,
+                  dia: dia,
+                  periodoInicio: periodoInicio,
+                  tamanhoBloco: tamanhoBloco,
+                  idSala: curso.idSala,
+                  indisponibilidades: indisponibilidades,
+                  trabalhando: trabalhando,
+                  permitirMesmoDia: permitirMesmoDia,
+                )) {
+                  continue;
+                }
+                for (var d = 0; d < tamanhoBloco; d++) {
+                  _registrarAula(
+                    idCurso: curso.id,
+                    idMateria: idMateriaA,
+                    idProfessor: professorA.id,
+                    dia: dia,
+                    periodo: periodoInicio + d,
+                    idSala: curso.idSala,
+                    grupo: 1,
+                    trabalhando: trabalhando,
+                    novasAulas: novasAulas,
+                  );
+                  _registrarAula(
+                    idCurso: curso.id,
+                    idMateria: idMateriaB,
+                    idProfessor: professorB.id,
+                    dia: dia,
+                    periodo: periodoInicio + d,
+                    idSala: curso.idSala,
+                    grupo: 2,
+                    trabalhando: trabalhando,
+                    novasAulas: novasAulas,
+                  );
+                }
+                return true;
               }
-              _registrarAula(
-                idCurso: curso.id,
-                idMateria: idMateriaA,
-                idProfessor: professorA.id,
-                dia: dia,
-                periodo: periodo,
-                idSala: curso.idSala,
-                grupo: 1,
-                trabalhando: trabalhando,
-                novasAulas: novasAulas,
-              );
-              _registrarAula(
-                idCurso: curso.id,
-                idMateria: idMateriaB,
-                idProfessor: professorB.id,
-                dia: dia,
-                periodo: periodo,
-                idSala: curso.idSala,
-                grupo: 2,
-                trabalhando: trabalhando,
-                novasAulas: novasAulas,
-              );
-              return true;
             }
           }
         }
@@ -411,59 +434,69 @@ class GeradorHorario {
     return false;
   }
 
-  bool _parCabe({
+  bool _blocoParCabe({
     required String idCurso,
     required String idMateriaA,
     required String idMateriaB,
     required String idProfessorA,
     required String idProfessorB,
     required int dia,
-    required int periodo,
+    required int periodoInicio,
+    required int tamanhoBloco,
     required String? idSala,
     required List<IndisponibilidadeProfessor> indisponibilidades,
     required List<Aula> trabalhando,
+    bool permitirMesmoDia = false,
   }) {
-    if (trabalhando.any(
-      (a) =>
-          a.idCurso == idCurso &&
-          (a.idMateria == idMateriaA || a.idMateria == idMateriaB) &&
-          a.indiceDia == dia,
-    )) {
-      return false;
-    }
-    if (trabalhando.any(
-      (a) =>
-          a.idCurso == idCurso &&
-          a.indiceDia == dia &&
-          a.indicePeriodo == periodo,
-    )) {
+    if (!permitirMesmoDia &&
+        trabalhando.any(
+          (a) =>
+              a.idCurso == idCurso &&
+              (a.idMateria == idMateriaA || a.idMateria == idMateriaB) &&
+              a.indiceDia == dia,
+        )) {
       return false;
     }
 
-    final celula = CelulaGrade(indiceDia: dia, indicePeriodo: periodo);
-    for (final idProfessor in [idProfessorA, idProfessorB]) {
+    for (var d = 0; d < tamanhoBloco; d++) {
+      final periodo = periodoInicio + d;
+      if (!GradeHoraria.periodosNaMesmaFaixa(periodoInicio, periodo)) {
+        return false;
+      }
       if (trabalhando.any(
         (a) =>
-            a.idProfessor == idProfessor &&
+            a.idCurso == idCurso &&
             a.indiceDia == dia &&
             a.indicePeriodo == periodo,
       )) {
         return false;
       }
-      if (_estaIndisponivel(indisponibilidades, idProfessor, celula)) {
-        return false;
-      }
-    }
 
-    if (idSala != null &&
-        trabalhando.any(
+      final celula = CelulaGrade(indiceDia: dia, indicePeriodo: periodo);
+      for (final idProfessor in [idProfessorA, idProfessorB]) {
+        if (trabalhando.any(
           (a) =>
-              a.idCurso != idCurso &&
-              a.idSala == idSala &&
+              a.idProfessor == idProfessor &&
               a.indiceDia == dia &&
               a.indicePeriodo == periodo,
         )) {
-      return false;
+          return false;
+        }
+        if (_estaIndisponivel(indisponibilidades, idProfessor, celula)) {
+          return false;
+        }
+      }
+
+      if (idSala != null &&
+          trabalhando.any(
+            (a) =>
+                a.idCurso != idCurso &&
+                a.idSala == idSala &&
+                a.indiceDia == dia &&
+                a.indicePeriodo == periodo,
+          )) {
+        return false;
+      }
     }
     return true;
   }
@@ -504,6 +537,7 @@ class GeradorHorario {
     required List<IndisponibilidadeProfessor> indisponibilidades,
     required List<Aula> trabalhando,
     required List<Aula> novasAulas,
+    bool permitirMesmoDia = false,
   }) {
     Professor? escolhido;
     for (final professor in professoresMateria) {
@@ -517,6 +551,7 @@ class GeradorHorario {
         idSala: idSala,
         indisponibilidades: indisponibilidades,
         trabalhando: trabalhando,
+        permitirMesmoDia: permitirMesmoDia,
       )) {
         escolhido = professor;
         break;
@@ -550,14 +585,17 @@ class GeradorHorario {
     required String? idSala,
     required List<IndisponibilidadeProfessor> indisponibilidades,
     required List<Aula> trabalhando,
+    bool permitirMesmoDia = false,
   }) {
-    // Gerador: no máximo um bloco da mesma matéria por dia (manual pode repetir).
-    if (trabalhando.any(
-      (a) =>
-          a.idCurso == idCurso &&
-          a.idMateria == idMateria &&
-          a.indiceDia == dia,
-    )) {
+    // Preferência: um bloco da mesma matéria por dia; só repete o dia
+    // quando [permitirMesmoDia] (carga maior que 5 blocos).
+    if (!permitirMesmoDia &&
+        trabalhando.any(
+          (a) =>
+              a.idCurso == idCurso &&
+              a.idMateria == idMateria &&
+              a.indiceDia == dia,
+        )) {
       return false;
     }
 

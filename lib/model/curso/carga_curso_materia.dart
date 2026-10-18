@@ -10,7 +10,7 @@ class CargaCursoMateria {
   final String idMateria;
   final int quantidadeAulas;
 
-  /// Aulas consecutivas no mesmo dia: 1 ou 2.
+  /// Aulas consecutivas no mesmo turno, até a carga da matéria e no máximo 6.
   final int tamanhoBloco;
 
   factory CargaCursoMateria.fromJson(Map<String, dynamic> json) =>

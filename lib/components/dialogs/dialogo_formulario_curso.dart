@@ -38,11 +38,13 @@ class _LinhaAulaGeminada {
     this.idMateriaA,
     this.idMateriaB,
     int quantidadePeriodos = 1,
+    this.quantidadeBlocos = 1,
   }) : controladorPeriodos = TextEditingController(text: '$quantidadePeriodos');
 
   String? idMateriaA;
   String? idMateriaB;
   final TextEditingController controladorPeriodos;
+  int quantidadeBlocos;
 
   void dispose() => controladorPeriodos.dispose();
 }
@@ -135,6 +137,7 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
             idMateriaA: par.idMateriaA,
             idMateriaB: par.idMateriaB,
             quantidadePeriodos: par.quantidadePeriodos,
+            quantidadeBlocos: par.quantidadeBlocos,
           ),
         )
         .toList();
@@ -178,8 +181,13 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
     return count == null || count < 1 ? 1 : count;
   }
 
+  int _limiteBloco(_LinhaCarga row) {
+    final pelaCarga = _quantidadeAulas(row);
+    return pelaCarga < 6 ? pelaCarga : 6;
+  }
+
   int _valorBloco(_LinhaCarga row) {
-    final limite = _quantidadeAulas(row);
+    final limite = _limiteBloco(row);
     if (row.tamanhoBloco < 1) return 1;
     if (row.tamanhoBloco > limite) return limite;
     return row.tamanhoBloco;
@@ -197,6 +205,25 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
     if (row.tamanhoBloco != valor) {
       row.tamanhoBloco = valor;
     }
+  }
+
+  int _aulasGeminada(_LinhaAulaGeminada row) {
+    final count = int.tryParse(row.controladorPeriodos.text.trim());
+    return count == null || count < 1 ? 1 : count;
+  }
+
+  /// Menos blocos que isso deixaria um bloco maior que um turno.
+  int _minimoBlocosGeminada(_LinhaAulaGeminada row) {
+    const maximo = AulaGeminadaCurso.maxAulasPorBloco;
+    return (_aulasGeminada(row) + maximo - 1) ~/ maximo;
+  }
+
+  int _valorBlocosGeminada(_LinhaAulaGeminada row) {
+    final minimo = _minimoBlocosGeminada(row);
+    final maximo = _aulasGeminada(row);
+    if (row.quantidadeBlocos < minimo) return minimo;
+    if (row.quantidadeBlocos > maximo) return maximo;
+    return row.quantidadeBlocos;
   }
 
   void _enviar() {
@@ -271,8 +298,23 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
 
       final periodos = int.tryParse(row.controladorPeriodos.text.trim());
       if (periodos == null || periodos < 1) {
+        setState(() => _erro = 'Aulas da aula geminada deve ser um número ≥ 1');
+        return;
+      }
+      final blocos = row.quantidadeBlocos;
+      if (blocos < 1 || blocos > periodos) {
         setState(
-          () => _erro = 'Períodos da aula geminada deve ser um número ≥ 1',
+          () => _erro =
+              'Blocos da aula geminada devem ir de 1 até o número de aulas',
+        );
+        return;
+      }
+      if (dividirEmBlocos(periodos, blocos).first >
+          AulaGeminadaCurso.maxAulasPorBloco) {
+        setState(
+          () => _erro =
+              'Cada bloco geminado pode ter no máximo '
+              '${AulaGeminadaCurso.maxAulasPorBloco} aulas (um turno)',
         );
         return;
       }
@@ -280,8 +322,8 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
       final cargaB = cargaPorMateria[idMateriaB] ?? 0;
       if (periodos > cargaA || periodos > cargaB) {
         setState(
-          () => _erro =
-              'Períodos geminados não podem passar da carga das matérias',
+          () =>
+              _erro = 'Aulas geminadas não podem passar da carga das matérias',
         );
         return;
       }
@@ -290,7 +332,7 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
       if (usadoA > cargaA || usadoB > cargaB) {
         setState(
           () => _erro =
-              'A soma dos períodos geminados passa da carga de uma matéria',
+              'A soma das aulas geminadas passa da carga de uma matéria',
         );
         return;
       }
@@ -302,6 +344,7 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
         idMateriaA: idMateriaA,
         idMateriaB: idMateriaB,
         quantidadePeriodos: periodos,
+        quantidadeBlocos: blocos,
       );
       if (!paresVistos.add(par.chave)) {
         setState(() => _erro = 'Par de aula geminada repetido');
@@ -345,94 +388,160 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
           ],
         ),
         if (podeCadastrarPares && _linhasGeminadas.isNotEmpty) ...[
+          const Text(
+            'Aulas: quantas aulas o par tem junto na semana. '
+            'Blocos: em quantos conjuntos de aulas seguidas elas são '
+            'divididas ao longo dos dias (ex.: 8 aulas em 2 blocos = '
+            '2 conjuntos de 4).',
+            style: TextStyle(fontSize: 12),
+          ),
           const SizedBox(height: 8),
           Column(
             children: [
               for (var i = 0; i < _linhasGeminadas.length; i++)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Column(
                     children: [
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          key: ValueKey(
-                            'gem-a-$i-${_linhasGeminadas[i].idMateriaA}',
+                      Row(
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              key: ValueKey(
+                                'gem-a-$i-${_linhasGeminadas[i].idMateriaA}',
+                              ),
+                              initialValue:
+                                  materiasComCarga.any(
+                                    (m) =>
+                                        m.id == _linhasGeminadas[i].idMateriaA,
+                                  )
+                                  ? _linhasGeminadas[i].idMateriaA
+                                  : null,
+                              decoration: const InputDecoration(
+                                labelText: 'Matéria A',
+                                isDense: true,
+                              ),
+                              items: materiasComCarga
+                                  .map(
+                                    (subject) => DropdownMenuItem(
+                                      value: subject.id,
+                                      child: Text(subject.nome),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (value) {
+                                setState(
+                                  () => _linhasGeminadas[i].idMateriaA = value,
+                                );
+                              },
+                            ),
                           ),
-                          initialValue:
-                              materiasComCarga.any(
-                                (m) => m.id == _linhasGeminadas[i].idMateriaA,
-                              )
-                              ? _linhasGeminadas[i].idMateriaA
-                              : null,
-                          decoration: const InputDecoration(
-                            labelText: 'Matéria A',
-                            isDense: true,
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              key: ValueKey(
+                                'gem-b-$i-${_linhasGeminadas[i].idMateriaB}',
+                              ),
+                              initialValue:
+                                  materiasComCarga.any(
+                                    (m) =>
+                                        m.id == _linhasGeminadas[i].idMateriaB,
+                                  )
+                                  ? _linhasGeminadas[i].idMateriaB
+                                  : null,
+                              decoration: const InputDecoration(
+                                labelText: 'Matéria B',
+                                isDense: true,
+                              ),
+                              items: materiasComCarga
+                                  .map(
+                                    (subject) => DropdownMenuItem(
+                                      value: subject.id,
+                                      child: Text(subject.nome),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (value) {
+                                setState(
+                                  () => _linhasGeminadas[i].idMateriaB = value,
+                                );
+                              },
+                            ),
                           ),
-                          items: materiasComCarga
-                              .map(
-                                (subject) => DropdownMenuItem(
-                                  value: subject.id,
-                                  child: Text(subject.nome),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (value) {
-                            setState(
-                              () => _linhasGeminadas[i].idMateriaA = value,
-                            );
-                          },
-                        ),
+                          IconButton(
+                            onPressed: () => _removerLinhaGeminada(i),
+                            tooltip: 'Remover par',
+                            icon: const Icon(Icons.close),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          key: ValueKey(
-                            'gem-b-$i-${_linhasGeminadas[i].idMateriaB}',
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              key: ValueKey('gem-aulas-$i'),
+                              controller:
+                                  _linhasGeminadas[i].controladorPeriodos,
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                              ],
+                              onChanged: (_) {
+                                setState(() {
+                                  final row = _linhasGeminadas[i];
+                                  row.quantidadeBlocos = _valorBlocosGeminada(
+                                    row,
+                                  );
+                                });
+                              },
+                              decoration: const InputDecoration(
+                                labelText: 'Aulas',
+                                isDense: true,
+                              ),
+                            ),
                           ),
-                          initialValue:
-                              materiasComCarga.any(
-                                (m) => m.id == _linhasGeminadas[i].idMateriaB,
-                              )
-                              ? _linhasGeminadas[i].idMateriaB
-                              : null,
-                          decoration: const InputDecoration(
-                            labelText: 'Matéria B',
-                            isDense: true,
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: DropdownButtonFormField<int>(
+                              key: ValueKey(
+                                'gem-blocos-$i-'
+                                '${_linhasGeminadas[i].quantidadeBlocos}-'
+                                '${_aulasGeminada(_linhasGeminadas[i])}',
+                              ),
+                              initialValue: _valorBlocosGeminada(
+                                _linhasGeminadas[i],
+                              ),
+                              decoration: const InputDecoration(
+                                labelText: 'Blocos',
+                                isDense: true,
+                              ),
+                              items: [
+                                for (
+                                  var value = _minimoBlocosGeminada(
+                                    _linhasGeminadas[i],
+                                  );
+                                  value <= _aulasGeminada(_linhasGeminadas[i]);
+                                  value++
+                                )
+                                  DropdownMenuItem(
+                                    value: value,
+                                    child: Text('$value'),
+                                  ),
+                              ],
+                              onChanged: (value) {
+                                if (value != null) {
+                                  setState(
+                                    () => _linhasGeminadas[i].quantidadeBlocos =
+                                        value,
+                                  );
+                                }
+                              },
+                            ),
                           ),
-                          items: materiasComCarga
-                              .map(
-                                (subject) => DropdownMenuItem(
-                                  value: subject.id,
-                                  child: Text(subject.nome),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (value) {
-                            setState(
-                              () => _linhasGeminadas[i].idMateriaB = value,
-                            );
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 88,
-                        child: TextField(
-                          controller: _linhasGeminadas[i].controladorPeriodos,
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                          ],
-                          decoration: const InputDecoration(
-                            labelText: 'Períodos',
-                            isDense: true,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () => _removerLinhaGeminada(i),
-                        tooltip: 'Remover par',
-                        icon: const Icon(Icons.close),
+                          // Mesmo espaço do botão de remover da linha de cima.
+                          const SizedBox(width: 48),
+                        ],
                       ),
                     ],
                   ),
@@ -591,7 +700,7 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
                                     items: [
                                       for (
                                         var value = 1;
-                                        value <= _quantidadeAulas(_linhas[i]);
+                                        value <= _limiteBloco(_linhas[i]);
                                         value++
                                       )
                                         DropdownMenuItem(

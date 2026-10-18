@@ -87,6 +87,22 @@ class RepositorioAula {
     return row['id'].toString();
   }
 
+  /// Insere várias aulas em uma única requisição.
+  Future<void> adicionarVarias(List<Aula> aulas) async {
+    if (aulas.isEmpty) return;
+    await _client
+        .from(_table)
+        .insert(aulas.map((aula) => aula.toInsertJson()).toList());
+  }
+
+  /// Ordem segura para gravar um conjunto deslocado: descendo, de baixo
+  /// para cima; subindo, de cima para baixo.
+  static List<Aula> ordemParaMover(List<Aula> aulas, int deslocamentoPeriodos) {
+    final ordenadas = List<Aula>.from(aulas)
+      ..sort((a, b) => a.indicePeriodo.compareTo(b.indicePeriodo));
+    return deslocamentoPeriodos > 0 ? ordenadas.reversed.toList() : ordenadas;
+  }
+
   Future<void> atualizar(Aula aula) async {
     await _client
         .from(_table)
@@ -97,6 +113,29 @@ class RepositorioAula {
           'grupo': aula.grupo,
         })
         .eq('id', int.parse(aula.id));
+  }
+
+  /// Grava dia e período novos das aulas movidas juntas.
+  ///
+  /// O banco não deixa duas aulas no mesmo (curso, dia, período, grupo).
+  /// Ao deslocar um conjunto no mesmo dia, atualiza primeiro a aula que vai
+  /// para um lugar já livre; ver [ordemParaMover].
+  Future<void> moverAulas(
+    List<Aula> aulasNaPosicaoNova, {
+    required int deslocamentoPeriodos,
+  }) async {
+    for (final aula in ordemParaMover(
+      aulasNaPosicaoNova,
+      deslocamentoPeriodos,
+    )) {
+      await _client
+          .from(_table)
+          .update({
+            'dia_semana': aula.indiceDia + 1,
+            'periodo': aula.indicePeriodo + 1,
+          })
+          .eq('id', int.parse(aula.id));
+    }
   }
 
   Future<void> excluir(String id) async {

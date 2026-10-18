@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test_project/components/dialogs/dialogo_confirmar_exclusao.dart';
 import 'package:flutter_test_project/components/dialogs/dialogo_formulario_aula.dart';
@@ -60,9 +61,7 @@ class AcoesHorario {
     );
     if (!confirmado) return null;
 
-    final repo = ref.read(provedorRepositorioAula);
-    await repo.excluirTodas();
-
+    // Gera antes de apagar: se nada couber, a grade atual fica intacta.
     final resultado = const GeradorHorario().gerarTodos(
       cursos: cursos,
       cargas: cargas,
@@ -74,16 +73,35 @@ class AcoesHorario {
       nomesCursos: {for (final c in cursos) c.id: c.nome},
     );
 
-    for (final aula in resultado.novasAulas) {
-      await repo.adicionar(aula);
+    if (resultado.novasAulas.isEmpty) {
+      final motivo = resultado.falhas.isEmpty
+          ? 'nenhuma aula a alocar.'
+          : resultado.falhas.first;
+      return 'Não foi possível gerar (grade atual mantida): $motivo';
+    }
+
+    final repo = ref.read(provedorRepositorioAula);
+    final anteriores = await repo.buscarTodos();
+    await repo.excluirTodas();
+
+    try {
+      await repo.adicionarVarias(resultado.novasAulas);
+    } catch (e) {
+      // Restaura a grade anterior para não deixar o banco vazio.
+      try {
+        await repo.excluirTodas();
+        await repo.adicionarVarias(anteriores);
+      } finally {
+        ref.invalidate(provedorAulas);
+      }
+      final detalhe = e is PostgrestException ? e.message : '$e';
+      return 'Não foi possível salvar o horário gerado '
+          '(grade anterior restaurada): $detalhe';
     }
     ref.invalidate(provedorAulas);
 
     if (resultado.completo) {
       return 'Horários gerados: ${resultado.novasAulas.length} aula(s) alocadas.';
-    }
-    if (resultado.novasAulas.isEmpty && resultado.falhas.isNotEmpty) {
-      return 'Não foi possível gerar: ${resultado.falhas.first}';
     }
     return 'Parcial: ${resultado.novasAulas.length} aula(s). '
         '${resultado.falhas.take(3).join(' ')}';
@@ -241,6 +259,81 @@ class AcoesHorario {
       await ref.read(provedorRepositorioAula).atualizar(aula);
     }
     ref.invalidate(provedorAulas);
+    return null;
+  }
+
+  /// Motivo para não soltar [aula] em [destino], ou null se pode.
+  /// Também usado para pintar a célula enquanto a aula passa por cima.
+  static String? motivoParaNaoSoltar({
+    required Aula aula,
+    required CelulaGrade destino,
+    required List<Aula> todasAulas,
+    required List<AulaGeminadaCurso> aulasGeminadas,
+    required List<Professor> professores,
+    required List<IndisponibilidadeProfessor> indisponibilidades,
+  }) {
+    final originais = aulasQueMovemJunto(
+      aula: aula,
+      todasAulas: todasAulas,
+      aulasGeminadas: aulasGeminadas,
+    );
+    return validarMoverAulas(
+      originais: originais,
+      movidas: deslocarAulas(originais, origem: aula.celula, destino: destino),
+      todasAulas: todasAulas,
+      professores: professores,
+      indisponibilidades: indisponibilidades,
+    );
+  }
+
+  /// Move a aula arrastada (ou o conjunto geminado dela) para [destino].
+  /// Retorna a mensagem de recusa, ou null se moveu.
+  Future<String?> moverAula({
+    required Aula aula,
+    required CelulaGrade destino,
+    required List<Aula> todasAulas,
+    required List<AulaGeminadaCurso> aulasGeminadas,
+    required List<Professor> professores,
+    required List<IndisponibilidadeProfessor> indisponibilidades,
+  }) async {
+    if (aula.celula == destino) return null;
+
+    final originais = aulasQueMovemJunto(
+      aula: aula,
+      todasAulas: todasAulas,
+      aulasGeminadas: aulasGeminadas,
+    );
+    final movidas = deslocarAulas(
+      originais,
+      origem: aula.celula,
+      destino: destino,
+    );
+    final motivo = validarMoverAulas(
+      originais: originais,
+      movidas: movidas,
+      todasAulas: todasAulas,
+      professores: professores,
+      indisponibilidades: indisponibilidades,
+    );
+    if (motivo != null) return 'Não foi possível mover. $motivo';
+
+    final repo = ref.read(provedorRepositorioAula);
+    final deslocamento = destino.indicePeriodo - aula.indicePeriodo;
+    try {
+      await repo.moverAulas(movidas, deslocamentoPeriodos: deslocamento);
+    } catch (e) {
+      // Falhou no meio de um conjunto: devolve todas à posição original
+      // para não deixar o conjunto dividido entre dois lugares.
+      try {
+        await repo.moverAulas(originais, deslocamentoPeriodos: -deslocamento);
+      } catch (_) {
+        // Sem conexão nem para desfazer; o validador da página mostra o
+        // estado real quando os dados recarregarem.
+      }
+      rethrow;
+    } finally {
+      ref.invalidate(provedorAulas);
+    }
     return null;
   }
 

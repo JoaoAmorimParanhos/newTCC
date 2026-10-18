@@ -309,3 +309,151 @@ String? validarSalvarAula({
 
   return null;
 }
+
+/// Aulas que se movem juntas ao arrastar [aula].
+///
+/// Aula comum: só ela. Aula geminada: o conjunto inteiro, ou seja, os dois
+/// grupos de todos os horários seguidos (no mesmo dia e turno) em que o
+/// mesmo par está junto.
+List<Aula> aulasQueMovemJunto({
+  required Aula aula,
+  required List<Aula> todasAulas,
+  required List<AulaGeminadaCurso> aulasGeminadas,
+}) {
+  List<Aula>? parNaCelula(int periodo) {
+    if (periodo < 0 || periodo >= GradeHoraria.periodos.length) return null;
+    if (!GradeHoraria.periodosNaMesmaFaixa(periodo, aula.indicePeriodo)) {
+      return null;
+    }
+    final naCelula = aulasNaCelula(
+      todasAulas,
+      aula.idCurso,
+      CelulaGrade(indiceDia: aula.indiceDia, indicePeriodo: periodo),
+    );
+    if (naCelula.length != 2) return null;
+    if (!existeAulaGeminada(
+      idCurso: aula.idCurso,
+      idMateriaA: naCelula.first.idMateria,
+      idMateriaB: naCelula.last.idMateria,
+      aulasGeminadas: aulasGeminadas,
+    )) {
+      return null;
+    }
+    return naCelula;
+  }
+
+  final daCelula = parNaCelula(aula.indicePeriodo);
+  if (daCelula == null) return [aula];
+
+  bool mesmoPar(List<Aula> outra) {
+    final materias = {for (final a in daCelula) a.idMateria};
+    return outra.every((a) => materias.contains(a.idMateria));
+  }
+
+  final conjunto = <Aula>[...daCelula];
+  for (var p = aula.indicePeriodo - 1; ; p--) {
+    final vizinha = parNaCelula(p);
+    if (vizinha == null || !mesmoPar(vizinha)) break;
+    conjunto.addAll(vizinha);
+  }
+  for (var p = aula.indicePeriodo + 1; ; p++) {
+    final vizinha = parNaCelula(p);
+    if (vizinha == null || !mesmoPar(vizinha)) break;
+    conjunto.addAll(vizinha);
+  }
+  return conjunto;
+}
+
+/// As [aulas] deslocadas como um conjunto: a aula pega em [origem] vai para
+/// [destino] e as outras mantêm a mesma distância dela.
+List<Aula> deslocarAulas(
+  List<Aula> aulas, {
+  required CelulaGrade origem,
+  required CelulaGrade destino,
+}) {
+  final dDia = destino.indiceDia - origem.indiceDia;
+  final dPeriodo = destino.indicePeriodo - origem.indicePeriodo;
+  return [
+    for (final a in aulas)
+      Aula(
+        id: a.id,
+        idCurso: a.idCurso,
+        indiceDia: a.indiceDia + dDia,
+        indicePeriodo: a.indicePeriodo + dPeriodo,
+        idMateria: a.idMateria,
+        idProfessor: a.idProfessor,
+        idSala: a.idSala,
+        grupo: a.grupo,
+      ),
+  ];
+}
+
+String _rotulo(CelulaGrade c) =>
+    '${GradeHoraria.dias[c.indiceDia]} ${GradeHoraria.periodos[c.indicePeriodo]}';
+
+/// Retorna o motivo para recusar soltar as [movidas] (já na posição nova),
+/// ou null se pode mover.
+String? validarMoverAulas({
+  required List<Aula> originais,
+  required List<Aula> movidas,
+  required List<Aula> todasAulas,
+  required List<Professor> professores,
+  required List<IndisponibilidadeProfessor> indisponibilidades,
+}) {
+  final idsMovidas = {for (final a in originais) a.id};
+  final horarios = <int>{for (final a in originais) a.indicePeriodo}.length;
+  final ehConjunto = horarios > 1 || originais.length > 1;
+  final nomes = {for (final p in professores) p.id: p.nome};
+
+  final dentro = movidas.every(
+    (a) =>
+        a.indiceDia >= 0 &&
+        a.indiceDia < GradeHoraria.dias.length &&
+        a.indicePeriodo >= 0 &&
+        a.indicePeriodo < GradeHoraria.periodos.length,
+  );
+  final mesmoTurno =
+      dentro &&
+      movidas.every(
+        (a) => GradeHoraria.periodosNaMesmaFaixa(
+          a.indicePeriodo,
+          movidas.first.indicePeriodo,
+        ),
+      );
+  if (!mesmoTurno) {
+    return 'Não cabe aqui: a aula geminada precisa de $horarios horário(s) '
+        'seguidos no mesmo turno.';
+  }
+
+  for (final nova in movidas) {
+    final celula = nova.celula;
+    final outras = todasAulas.where(
+      (a) =>
+          !idsMovidas.contains(a.id) &&
+          a.indiceDia == nova.indiceDia &&
+          a.indicePeriodo == nova.indicePeriodo,
+    );
+
+    if (outras.any((a) => a.idCurso == nova.idCurso)) {
+      return ehConjunto
+          ? 'Horário ocupado: a aula geminada precisa de $horarios '
+                'horário(s) vazios seguidos (${_rotulo(celula)} já tem aula).'
+          : 'Horário ocupado: solte a aula numa célula vazia '
+                '(${_rotulo(celula)} já tem aula).';
+    }
+
+    final nomeProfessor = nomes[nova.idProfessor] ?? 'Professor';
+    if (outras.any((a) => a.idProfessor == nova.idProfessor)) {
+      return '$nomeProfessor já está dando aula em ${_rotulo(celula)}.';
+    }
+    if (estaIndisponivel(indisponibilidades, nova.idProfessor, celula)) {
+      return '$nomeProfessor está indisponível em ${_rotulo(celula)} '
+          '(Página 2).';
+    }
+    final idSala = nova.idSala;
+    if (idSala != null && outras.any((a) => a.idSala == idSala)) {
+      return 'A sala já está ocupada por outra turma em ${_rotulo(celula)}.';
+    }
+  }
+  return null;
+}
