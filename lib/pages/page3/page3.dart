@@ -6,6 +6,7 @@ import 'package:flutter_test_project/model/aula/aula.dart';
 import 'package:flutter_test_project/model/curso/aula_geminada_curso.dart';
 import 'package:flutter_test_project/model/curso/carga_curso_materia.dart';
 import 'package:flutter_test_project/model/curso/curso.dart';
+import 'package:flutter_test_project/model/horario/horario_periodo.dart';
 import 'package:flutter_test_project/model/materia/materia.dart';
 import 'package:flutter_test_project/model/professor/indisponibilidade_professor.dart';
 import 'package:flutter_test_project/model/professor/professor.dart';
@@ -14,6 +15,7 @@ import 'package:flutter_test_project/model/sala/sala.dart';
 import 'package:flutter_test_project/pages/layout_base.dart';
 import 'package:flutter_test_project/pages/page3/helpers/acoes_horario.dart';
 import 'package:flutter_test_project/pages/page3/helpers/regras_horario.dart';
+import 'package:flutter_test_project/pages/page3/widgets/barra_acoes_horario.dart';
 import 'package:flutter_test_project/pages/page3/widgets/lista_cursos_horario.dart';
 import 'package:flutter_test_project/pages/page3/widgets/painel_grade_curso.dart';
 import 'package:flutter_test_project/providers/providers.dart';
@@ -89,6 +91,7 @@ class _Page3State extends ConsumerState<Page3> {
     required List<Materia> materias,
     required List<Professor> professores,
     required List<Sala> salas,
+    required Map<int, String> horarios,
   }) async {
     try {
       final bytes = await const ExportadorHorarioPdf().gerar(
@@ -97,8 +100,17 @@ class _Page3State extends ConsumerState<Page3> {
         materias: materias,
         professores: professores,
         salas: salas,
+        horarios: horarios,
       );
       await Printing.layoutPdf(onLayout: (_) async => bytes, name: 'horarios');
+    } catch (e) {
+      _mostrarErro(e);
+    }
+  }
+
+  Future<void> _salvarHorario(int indicePeriodo, String texto) async {
+    try {
+      await _acoes.salvarHorarioPeriodo(indicePeriodo, texto);
     } catch (e) {
       _mostrarErro(e);
     }
@@ -174,6 +186,12 @@ class _Page3State extends ConsumerState<Page3> {
     final ligacoesAsync = ref.watch(provedorProfessorMaterias);
     final indisponibilidadesAsync = ref.watch(provedorIndisponibilidades);
     final salasAsync = ref.watch(provedorSalas);
+    // Os horários são só rótulos: se a tabela falhar, a grade segue sem eles.
+    final horarios = {
+      for (final h in ref.watch(provedorHorariosPeriodo).valueOrNull ??
+          const <HorarioPeriodo>[])
+        h.indicePeriodo: h.texto,
+    };
 
     final aulas = aulasAsync.value ?? const <Aula>[];
     final cargas = cargasAsync.value ?? const <CargaCursoMateria>[];
@@ -215,7 +233,34 @@ class _Page3State extends ConsumerState<Page3> {
       titulo: 'Página 3',
       body: Padding(
         padding: const EdgeInsets.all(8),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            BarraAcoesHorario(
+              aoGerar: _ocupado || !dadosProntos || cursos.isEmpty
+                  ? null
+                  : () => _gerarTodos(
+                      cursos: cursos,
+                      cargas: cargas,
+                      professores: professores,
+                      ligacoes: ligacoes,
+                      indisponibilidades: indisponibilidades,
+                      aulasGeminadas: aulasGeminadas,
+                      materias: materias,
+                    ),
+              aoPdf: cursos.isEmpty
+                  ? null
+                  : () => _exportarPdf(
+                      cursos: cursos,
+                      aulas: aulas,
+                      materias: materias,
+                      professores: professores,
+                      salas: salas,
+                      horarios: horarios,
+                    ),
+            ),
+            Expanded(
+              child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (selecionado != null)
@@ -230,27 +275,10 @@ class _Page3State extends ConsumerState<Page3> {
                 ligacoes: ligacoes,
                 indisponibilidades: indisponibilidades,
                 salas: salas,
+                horarios: horarios,
                 ocupado: _ocupado,
-                aoGerar: _ocupado || !dadosProntos || cursos.isEmpty
-                    ? null
-                    : () => _gerarTodos(
-                        cursos: cursos,
-                        cargas: cargas,
-                        professores: professores,
-                        ligacoes: ligacoes,
-                        indisponibilidades: indisponibilidades,
-                        aulasGeminadas: aulasGeminadas,
-                        materias: materias,
-                      ),
-                aoPdf: cursos.isEmpty
-                    ? null
-                    : () => _exportarPdf(
-                        cursos: cursos,
-                        aulas: aulas,
-                        materias: materias,
-                        professores: professores,
-                        salas: salas,
-                      ),
+                aoSalvarHorario: (indicePeriodo, texto) =>
+                    _salvarHorario(indicePeriodo, texto),
                 aoLimpar: _ocupado ? null : () => _limparCurso(selecionado),
                 aoFechar: () => setState(() => _cursoSelecionado = null),
                 aoSoltarAula:
@@ -291,6 +319,9 @@ class _Page3State extends ConsumerState<Page3> {
               aoSelecionar: (curso) {
                 setState(() => _cursoSelecionado = curso);
               },
+            ),
+          ],
+              ),
             ),
           ],
         ),

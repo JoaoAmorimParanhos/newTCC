@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test_project/services/repositories/repositorio_aula.dart';
 import 'package:flutter_test_project/services/repositories/repositorio_curso.dart';
+import 'package:flutter_test_project/services/repositories/repositorio_horario_periodo.dart';
 import 'package:flutter_test_project/services/repositories/repositorio_professor.dart';
+import 'package:flutter_test_project/services/repositories/repositorio_tipo_sala.dart';
 import 'package:flutter_test_project/services/repositories/repositorio_indisponibilidade.dart';
 import 'package:flutter_test_project/services/repositories/repositorio_sala.dart';
 import 'package:flutter_test_project/services/repositories/repositorio_materia.dart';
@@ -26,6 +28,14 @@ final provedorRepositorioCurso = Provider<RepositorioCurso>(
 
 final provedorRepositorioAula = Provider<RepositorioAula>(
   (ref) => RepositorioAula(),
+);
+
+final provedorRepositorioHorarioPeriodo = Provider<RepositorioHorarioPeriodo>(
+  (ref) => RepositorioHorarioPeriodo(),
+);
+
+final provedorRepositorioTipoSala = Provider<RepositorioTipoSala>(
+  (ref) => RepositorioTipoSala(),
 );
 
 final provedorRepositorioIndisponibilidade =

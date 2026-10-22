@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_test_project/model/curso/aula_geminada_curso.dart';
 import 'package:flutter_test_project/model/curso/carga_curso_materia.dart';
 import 'package:flutter_test_project/model/curso/curso.dart';
+import 'package:flutter_test_project/model/horario/horario_periodo.dart';
 import 'package:flutter_test_project/model/materia/materia.dart';
 import 'package:flutter_test_project/model/professor/professor.dart';
 import 'package:flutter_test_project/model/professor/professor_materia.dart';
@@ -28,6 +29,7 @@ Future<void> _abrirPagina3(
   List<Materia>? materias,
   double alturaTela = 2000,
   bool selecionarCurso = true,
+  List<HorarioPeriodo> horarios = const [],
 }) async {
   tester.view.physicalSize = Size(1600, alturaTela);
   tester.view.devicePixelRatio = 1;
@@ -62,6 +64,7 @@ Future<void> _abrirPagina3(
         ),
         provedorIndisponibilidades.overrideWith((ref) => Stream.value(const [])),
         provedorSalas.overrideWith((ref) => Stream.value(salasPadrao)),
+        provedorHorariosPeriodo.overrideWith((ref) => Stream.value(horarios)),
       ],
       child: const MaterialApp(home: Page3()),
     ),
@@ -554,8 +557,15 @@ void main() {
 
   group('Página 3: gerar horários', () {
     Future<void> gerar(WidgetTester tester) async {
-      await _tocar(tester, find.widgetWithText(TextButton, 'Gerar'));
-      await _tocar(tester, find.widgetWithText(FilledButton, 'Gerar'));
+      await _tocar(tester, find.byKey(const ValueKey('botao-gerar')));
+      // Confirma no diálogo (a barra também tem um botão "Gerar").
+      await _tocar(
+        tester,
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.widgetWithText(FilledButton, 'Gerar'),
+        ),
+      );
     }
 
     testWidgets('gera e substitui a grade', (tester) async {
@@ -633,8 +643,8 @@ void main() {
         professores: carregando.stream,
       );
 
-      final botao = tester.widget<TextButton>(
-        find.widgetWithText(TextButton, 'Gerar'),
+      final botao = tester.widget<ButtonStyleButton>(
+        find.byKey(const ValueKey('botao-gerar')),
       );
       expect(botao.onPressed, isNull);
     });

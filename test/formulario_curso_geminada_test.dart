@@ -146,6 +146,64 @@ void main() {
       expect(pares.single.tamanhosBlocos, [4, 4]);
     });
 
+    testWidgets('cargas diferentes: Informática 2 e Inglês 4', (tester) async {
+      final abertura = await _abrir(tester, cargas: _cargas8);
+
+      await _adicionarPar(tester);
+      await tester.pumpAndSettle();
+      await _escolherMateria(tester, 'gem-a-0', 'Informática');
+      await _escolherMateria(tester, 'gem-b-0', 'Inglês');
+      await tester.enterText(find.byKey(const ValueKey('gem-aulas-0')), '2');
+      await tester.enterText(find.byKey(const ValueKey('gem-aulas-b-0')), '4');
+      await tester.pumpAndSettle();
+      // Blocos vão até a matéria maior (4 horários).
+      expect(await _opcoesBlocos(tester, 0), ['1', '2', '3', '4']);
+      await _salvar(tester);
+
+      final salvo = abertura.resultado!.aulasGeminadas.single;
+      expect(salvo.quantidadeDe(informatica.id), 2);
+      expect(salvo.quantidadeDe(ingles.id), 4);
+      expect(salvo.periodosOcupados, 4);
+    });
+
+    testWidgets('editar par com cargas diferentes mostra as duas', (
+      tester,
+    ) async {
+      await _abrir(
+        tester,
+        cargas: _cargas8,
+        pares: [par(informatica.id, ingles.id, aulas: 2, aulasB: 4, blocos: 1)],
+      );
+      String texto(String chave) => tester
+          .widget<TextField>(find.byKey(ValueKey(chave)))
+          .controller!
+          .text;
+      expect(texto('gem-aulas-0'), '2');
+      expect(texto('gem-aulas-b-0'), '4');
+    });
+
+    testWidgets('Aulas de B não pode passar da carga de B', (tester) async {
+      final abertura = await _abrir(
+        tester,
+        cargas: [carga(informatica.id, 8), carga(ingles.id, 3)],
+      );
+
+      await _adicionarPar(tester);
+      await tester.pumpAndSettle();
+      await _escolherMateria(tester, 'gem-a-0', 'Informática');
+      await _escolherMateria(tester, 'gem-b-0', 'Inglês');
+      await tester.enterText(find.byKey(const ValueKey('gem-aulas-0')), '2');
+      await tester.enterText(find.byKey(const ValueKey('gem-aulas-b-0')), '4');
+      await tester.pumpAndSettle();
+      await _salvar(tester);
+
+      expect(abertura.resultado, isNull);
+      expect(
+        find.text('Aulas geminadas não podem passar da carga das matérias'),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('blocos vão no máximo até o número de aulas', (tester) async {
       await _abrir(
         tester,

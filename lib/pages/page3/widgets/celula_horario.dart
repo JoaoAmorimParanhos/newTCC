@@ -4,6 +4,7 @@ import 'package:flutter_test_project/model/aula/aula.dart';
 import 'package:flutter_test_project/model/materia/materia.dart';
 import 'package:flutter_test_project/model/professor/professor.dart';
 import 'package:flutter_test_project/model/sala/sala.dart';
+import 'package:flutter_test_project/pages/page3/helpers/regras_horario.dart';
 import 'package:flutter_test_project/theme/app_theme.dart';
 
 class CelulaHorario extends StatelessWidget {
@@ -39,6 +40,8 @@ class CelulaHorario extends StatelessWidget {
   Widget build(BuildContext context) {
     final ordenadas = List<Aula>.from(aulas)
       ..sort((a, b) => a.grupo.compareTo(b.grupo));
+    // Turma dividida com só o grupo 2 tendo aula: mostra o G1 livre ao lado.
+    final dividida = turmaDivididaComGrupoLivre(ordenadas);
 
     return DragTarget<Aula>(
       // Aceita sempre para poder explicar a recusa na mensagem.
@@ -65,21 +68,21 @@ class CelulaHorario extends StatelessWidget {
               onTap: ocupado ? null : aoTocar,
               borderRadius: BorderRadius.circular(8),
               child: SizedBox(
-                height: ordenadas.length > 1 ? 88 : 68,
+                height: ordenadas.length > 1 || dividida ? 88 : 68,
                 child: ordenadas.isEmpty
                     ? const Center(
                         child: Icon(Icons.add, color: IfprColors.cinzaClaro),
                       )
-                    : ordenadas.length == 1
+                    : ordenadas.length == 1 && !dividida
                     ? _arrastavel(ordenadas.first)
                     : Row(
                         children: [
+                          if (dividida) ...[
+                            const Expanded(child: _GrupoLivre()),
+                            _divisoria(),
+                          ],
                           for (var i = 0; i < ordenadas.length; i++) ...[
-                            if (i > 0)
-                              Container(
-                                width: 1,
-                                color: IfprColors.verde.withValues(alpha: 0.35),
-                              ),
+                            if (i > 0) _divisoria(),
                             Expanded(child: _arrastavel(ordenadas[i])),
                           ],
                         ],
@@ -91,6 +94,11 @@ class CelulaHorario extends StatelessWidget {
       },
     );
   }
+
+  Widget _divisoria() => Container(
+    width: 1,
+    color: IfprColors.verde.withValues(alpha: 0.35),
+  );
 
   Widget _arrastavel(Aula aula) {
     final conteudo = _conteudoAula(aula);
@@ -161,6 +169,40 @@ class CelulaHorario extends StatelessWidget {
                 color: IfprColors.verde,
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Metade vazia da célula quando a turma está dividida e o grupo 1 não tem
+/// aula (parte da aula geminada só com a matéria maior).
+class _GrupoLivre extends StatelessWidget {
+  const _GrupoLivre();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.all(3),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            'G1',
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+              color: IfprColors.verde,
+            ),
+          ),
+          Text(
+            'Livre',
+            style: TextStyle(
+              fontSize: 11,
+              fontStyle: FontStyle.italic,
+              color: IfprColors.cinzaClaro,
+            ),
+          ),
         ],
       ),
     );

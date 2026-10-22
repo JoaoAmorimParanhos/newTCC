@@ -8,6 +8,7 @@ import 'package:flutter_test_project/model/aula/aula.dart';
 import 'package:flutter_test_project/model/curso/aula_geminada_curso.dart';
 import 'package:flutter_test_project/model/curso/carga_curso_materia.dart';
 import 'package:flutter_test_project/model/curso/curso.dart';
+import 'package:flutter_test_project/model/horario/horario_periodo.dart';
 import 'package:flutter_test_project/model/materia/materia.dart';
 import 'package:flutter_test_project/model/professor/indisponibilidade_professor.dart';
 import 'package:flutter_test_project/model/professor/professor.dart';
@@ -22,6 +23,14 @@ class AcoesHorario {
   AcoesHorario(this.ref);
 
   final WidgetRef ref;
+
+  /// Grava o texto do horário do período. Vale para todas as turmas.
+  Future<void> salvarHorarioPeriodo(int indicePeriodo, String texto) async {
+    await ref
+        .read(provedorRepositorioHorarioPeriodo)
+        .salvar(HorarioPeriodo(indicePeriodo: indicePeriodo, texto: texto));
+    ref.invalidate(provedorHorariosPeriodo);
+  }
 
   Future<String?> limparCurso({
     required BuildContext context,
@@ -219,7 +228,26 @@ class AcoesHorario {
 
     if (resultado is ExclusaoFormularioAula) {
       if (existente == null) return null;
-      await ref.read(provedorRepositorioAula).excluir(existente.id);
+      final repo = ref.read(provedorRepositorioAula);
+      await repo.excluir(existente.id);
+      // Aula geminada continua dividida: a que sobra fica no grupo 2 e o
+      // grupo 1 fica livre. Excluindo essa também, a célula fica vazia.
+      final restante = naCelula.where((a) => a.id != existente!.id).toList();
+      if (restante.length == 1 && restante.single.grupo == 1) {
+        final sobra = restante.single;
+        await repo.atualizar(
+          Aula(
+            id: sobra.id,
+            idCurso: sobra.idCurso,
+            indiceDia: sobra.indiceDia,
+            indicePeriodo: sobra.indicePeriodo,
+            idMateria: sobra.idMateria,
+            idProfessor: sobra.idProfessor,
+            idSala: sobra.idSala,
+            grupo: 2,
+          ),
+        );
+      }
       ref.invalidate(provedorAulas);
       return null;
     }

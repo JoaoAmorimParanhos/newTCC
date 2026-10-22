@@ -10,11 +10,19 @@ import 'package:flutter_test_project/providers/providers.dart';
 class ColunaSala extends ConsumerWidget {
   const ColunaSala({super.key});
 
+  Future<TipoSala> _criarTipo(WidgetRef ref, String nome) async {
+    final novo = await ref.read(provedorRepositorioTipoSala).adicionar(nome);
+    ref.invalidate(provedorTiposSala);
+    return novo;
+  }
+
   Future<void> _criar(BuildContext context, WidgetRef ref) async {
     final dados = await mostrarDialogoNumero(
       context,
       titulo: 'Nova sala',
       rotulo: 'Número da sala',
+      tipos: ref.read(provedorTiposSala).value ?? const [],
+      aoCriarTipo: (nome) => _criarTipo(ref, nome),
     );
     if (dados == null) return;
 
@@ -25,7 +33,7 @@ class ColunaSala extends ConsumerWidget {
       if (!context.mounted) return;
       _mostrarErro(
         context,
-        'Esse número já está em uso para ${dados.tipo.rotulo}.',
+        'Esse número já está em uso para ${dados.tipo.nome}.',
       );
     } catch (e) {
       if (!context.mounted) return;
@@ -42,6 +50,8 @@ class ColunaSala extends ConsumerWidget {
       context,
       titulo: 'Editar sala',
       rotulo: 'Número da sala',
+      tipos: ref.read(provedorTiposSala).value ?? const [],
+      aoCriarTipo: (nome) => _criarTipo(ref, nome),
       numeroInicial: room.numero,
       tipoInicial: room.tipo,
     );
@@ -56,7 +66,7 @@ class ColunaSala extends ConsumerWidget {
       if (!context.mounted) return;
       _mostrarErro(
         context,
-        'Esse número já está em uso para ${dados.tipo.rotulo}.',
+        'Esse número já está em uso para ${dados.tipo.nome}.',
       );
     } catch (e) {
       if (!context.mounted) return;
@@ -98,6 +108,8 @@ class ColunaSala extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final roomsAsync = ref.watch(provedorSalas);
+    // Mantém a lista de tipos carregada para o diálogo de sala.
+    ref.watch(provedorTiposSala);
 
     return ColunaQuadro(
       titulo: 'Salas',

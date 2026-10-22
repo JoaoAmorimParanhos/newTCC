@@ -1,54 +1,57 @@
-enum TipoSala {
-  salaAula,
-  laboratorioInformatica;
+/// Tipo de sala cadastrado pelo usuário (ex.: Sala de aula, Quadra).
+class TipoSala {
+  const TipoSala({required this.id, required this.nome});
 
-  static TipoSala fromDb(String? value) => switch (value) {
-    'laboratorio_informatica' => TipoSala.laboratorioInformatica,
-    _ => TipoSala.salaAula,
-  };
+  final String id;
+  final String nome;
 
-  String toDb() => switch (this) {
-    TipoSala.salaAula => 'sala_aula',
-    TipoSala.laboratorioInformatica => 'laboratorio_informatica',
-  };
+  factory TipoSala.fromJson(Map<String, dynamic> json) => TipoSala(
+    id: json['id'].toString(),
+    nome: json['nome'] as String,
+  );
 
-  String get rotulo => switch (this) {
-    TipoSala.salaAula => 'Sala de aula',
-    TipoSala.laboratorioInformatica => 'Laboratório de informática',
-  };
+  @override
+  bool operator ==(Object other) => other is TipoSala && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 class SalaDuplicada implements Exception {
   const SalaDuplicada();
 }
 
+class TipoSalaDuplicado implements Exception {
+  const TipoSalaDuplicado();
+}
+
 class Sala {
   Sala({
     required this.id,
     required this.numero,
-    this.tipo = TipoSala.salaAula,
+    required this.tipo,
   });
 
   final String id;
   final int numero;
   final TipoSala tipo;
 
-  String get rotulo => '${tipo.rotulo} $numero';
+  String get rotulo => '${tipo.nome} $numero';
 
-  factory Sala.fromJson(Map<String, dynamic> json) => Sala(
-    id: json['id'].toString(),
-    numero: (json['numero'] as num).toInt(),
-    tipo: TipoSala.fromDb(json['tipo'] as String?),
-  );
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'numero': numero,
-    'tipo': tipo.toDb(),
-  };
+  /// [json] vem de `select('*, tipo:tb_tipo_sala(id, nome)')`.
+  factory Sala.fromJson(Map<String, dynamic> json) {
+    final tipo = json['tipo'];
+    return Sala(
+      id: json['id'].toString(),
+      numero: (json['numero'] as num).toInt(),
+      tipo: tipo is Map<String, dynamic>
+          ? TipoSala.fromJson(tipo)
+          : TipoSala(id: json['id_tipo_sala'].toString(), nome: 'Sala'),
+    );
+  }
 
   Map<String, dynamic> toInsertJson() => {
     'numero': numero,
-    'tipo': tipo.toDb(),
+    'id_tipo_sala': int.parse(tipo.id),
   };
 }

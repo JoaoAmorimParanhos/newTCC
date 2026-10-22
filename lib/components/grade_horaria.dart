@@ -8,7 +8,7 @@ class CelulaGrade {
   /// 0 = Seg … 4 = Sex
   final int indiceDia;
 
-  /// 0–5 manhã, 6–11 tarde
+  /// 0–5 manhã, 6–11 tarde, 12–15 noite
   final int indicePeriodo;
 
   @override
@@ -21,7 +21,6 @@ class CelulaGrade {
   int get hashCode => Object.hash(indiceDia, indicePeriodo);
 }
 
-/// Shared grade: Seg–Sex × 6 manhã + Almoço + 6 tarde.
 ///
 /// - Page 2: [interativo] true — tap toggles red (unavailable).
 /// - Page 3: pass [construirCelula] to show/edit aulas.
@@ -32,11 +31,13 @@ class GradeHoraria extends StatelessWidget {
     this.celulasMarcadas = const {},
     this.aoAlternar,
     this.construirCelula,
+    this.construirRotuloPeriodo,
+    this.larguraRotulo = 64,
   });
 
   static const dias = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'];
 
-  /// 12 períodos: 0–5 manhã, 6–11 tarde. DB: periodo 1–12.
+  /// 16 períodos: 0–5 manhã, 6–11 tarde, 12–15 noite. DB: periodo 1–16.
   static const periodos = [
     '1º M',
     '2º M',
@@ -50,17 +51,35 @@ class GradeHoraria extends StatelessWidget {
     '4º T',
     '5º T',
     '6º T',
+    '1º N',
+    '2º N',
+    '3º N',
+    '4º N',
   ];
 
   static const quantidadePeriodosManha = 6;
   static const quantidadePeriodosTarde = 6;
+  static const quantidadePeriodosNoite = 4;
 
   static int get inicioTarde => quantidadePeriodosManha;
+  static int get inicioNoite => inicioTarde + quantidadePeriodosTarde;
 
-  /// 0 = manhã, 1 = tarde
+  /// Índices dos períodos de cada turno.
+  static List<int> get periodosManha => [
+    for (var p = 0; p < inicioTarde; p++) p,
+  ];
+  static List<int> get periodosTarde => [
+    for (var p = inicioTarde; p < inicioNoite; p++) p,
+  ];
+  static List<int> get periodosNoite => [
+    for (var p = inicioNoite; p < periodos.length; p++) p,
+  ];
+
+  /// 0 = manhã, 1 = tarde, 2 = noite
   static int faixaDoPeriodo(int indicePeriodo) {
-    if (indicePeriodo < quantidadePeriodosManha) return 0;
-    return 1;
+    if (indicePeriodo < inicioTarde) return 0;
+    if (indicePeriodo < inicioNoite) return 1;
+    return 2;
   }
 
   static bool periodosNaMesmaFaixa(int a, int b) =>
@@ -72,6 +91,12 @@ class GradeHoraria extends StatelessWidget {
 
   /// When set, overrides the default empty / unavailability cell.
   final Widget Function(CelulaGrade celula)? construirCelula;
+
+  /// When set, overrides the period label in the first column
+  /// (Page 3: editable class times).
+  final Widget Function(int indicePeriodo)? construirRotuloPeriodo;
+
+  final double larguraRotulo;
 
   @override
   Widget build(BuildContext context) {
@@ -90,7 +115,7 @@ class GradeHoraria extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 columnWidths: {
-                  0: const FixedColumnWidth(64),
+                  0: FixedColumnWidth(larguraRotulo),
                   for (var i = 1; i <= dias.length; i++)
                     i: const FlexColumnWidth(),
                 },
@@ -103,11 +128,11 @@ class GradeHoraria extends StatelessWidget {
                       ...dias.map(_celulaCabecalho),
                     ],
                   ),
-                  for (var p = 0; p < quantidadePeriodosManha; p++)
-                    _linhaPeriodo(p),
+                  for (final p in periodosManha) _linhaPeriodo(p),
                   _linhaSeparador('Almoço'),
-                  for (var p = inicioTarde; p < periodos.length; p++)
-                    _linhaPeriodo(p),
+                  for (final p in periodosTarde) _linhaPeriodo(p),
+                  _linhaSeparador('Jantar'),
+                  for (final p in periodosNoite) _linhaPeriodo(p),
                 ],
               ),
             ),
@@ -120,7 +145,8 @@ class GradeHoraria extends StatelessWidget {
   TableRow _linhaPeriodo(int indicePeriodo) {
     return TableRow(
       children: [
-        _celulaCabecalho(periodos[indicePeriodo]),
+        construirRotuloPeriodo?.call(indicePeriodo) ??
+            _celulaCabecalho(periodos[indicePeriodo]),
         for (var d = 0; d < dias.length; d++)
           _celulaSlot(
             CelulaGrade(indiceDia: d, indicePeriodo: indicePeriodo),

@@ -30,12 +30,12 @@ final ligacoesPadrao = [
   ProfessorMateria(idProfessor: diego.id, idMateria: matematica.id),
 ];
 
-final sala1 = Sala(id: '30', numero: 1);
-final lab1 = Sala(
-  id: '31',
-  numero: 1,
-  tipo: TipoSala.laboratorioInformatica,
-);
+const tipoSalaAula = TipoSala(id: '1', nome: 'Sala de aula');
+const tipoLaboratorio = TipoSala(id: '2', nome: 'Laboratório de informática');
+const tipoQuadra = TipoSala(id: '3', nome: 'Quadra');
+
+final sala1 = Sala(id: '30', numero: 1, tipo: tipoSalaAula);
+final lab1 = Sala(id: '31', numero: 1, tipo: tipoLaboratorio);
 final salasPadrao = [sala1, lab1];
 
 Curso curso({
@@ -67,12 +67,14 @@ AulaGeminadaCurso par(
   String idMateriaB, {
   required int aulas,
   required int blocos,
+  int? aulasB,
   String idCurso = '1',
 }) => AulaGeminadaCurso(
   idCurso: idCurso,
   idMateriaA: idMateriaA,
   idMateriaB: idMateriaB,
   quantidadePeriodos: aulas,
+  quantidadePeriodosB: aulasB,
   quantidadeBlocos: blocos,
 );
 

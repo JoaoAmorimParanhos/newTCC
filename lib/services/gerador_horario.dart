@@ -244,11 +244,13 @@ class GeradorHorario {
   }
 
   List<List<int>> _fasesPeriodo(PreferenciaPeriodo preferencia) {
-    const manha = [0, 1, 2, 3, 4, 5];
-    const tarde = [6, 7, 8, 9, 10, 11];
+    final manha = GradeHoraria.periodosManha;
+    final tarde = GradeHoraria.periodosTarde;
     return switch (preferencia) {
       PreferenciaPeriodo.manhaTarde => [manha, tarde],
       PreferenciaPeriodo.tardeManha => [tarde, manha],
+      // Turma noturna só usa a noite.
+      PreferenciaPeriodo.noite => [GradeHoraria.periodosNoite],
     };
   }
 
@@ -316,39 +318,59 @@ class GeradorHorario {
         continue;
       }
 
-      final restanteA =
-          (cargaPorMateria[par.idMateriaA] ?? 0) - jaAlocado(par.idMateriaA);
-      final restanteB =
-          (cargaPorMateria[par.idMateriaB] ?? 0) - jaAlocado(par.idMateriaB);
-      final limiteCarga = restanteA < restanteB ? restanteA : restanteB;
-      var restante = par.quantidadePeriodos < limiteCarga
-          ? par.quantidadePeriodos
-          : limiteCarga;
-      if (restante < 0) restante = 0;
-      final excedente = par.quantidadePeriodos - restante;
-      if (excedente > 0) {
-        falhas.add(
-          'Aula geminada de $nomeA e $nomeB pede ${par.quantidadePeriodos} '
-          'aula(s), mas a carga só comporta $restante.',
-        );
+      // Cada matéria fica limitada pela própria carga ainda livre.
+      int caber(String idMateria) {
+        final pedido = par.quantidadeDe(idMateria);
+        final livre =
+            (cargaPorMateria[idMateria] ?? 0) - jaAlocado(idMateria);
+        final nome = rotulo(idMateria);
+        if (livre < pedido) {
+          falhas.add(
+            'Aula geminada de $nomeA e $nomeB pede $pedido aula(s) de '
+            '$nome, mas a carga só comporta ${livre < 0 ? 0 : livre}.',
+          );
+        }
+        return livre < 0 ? 0 : (livre < pedido ? livre : pedido);
       }
 
-      // Divide as aulas do par em blocos de aulas seguidas
+      final cabeA = caber(par.idMateriaA);
+      final cabeB = caber(par.idMateriaB);
+      if (cabeA == 0 || cabeB == 0) continue;
+      final cabe = AulaGeminadaCurso(
+        idCurso: curso.id,
+        idMateriaA: par.idMateriaA,
+        idMateriaB: par.idMateriaB,
+        quantidadePeriodos: cabeA,
+        quantidadePeriodosB: cabeB,
+        quantidadeBlocos: par.quantidadeBlocos,
+      );
+
+      // G1 = matéria de menos aulas; G2 = a de mais aulas (fica sozinha
+      // nos horários em que o G1 está livre).
+      final idG1 = cabe.idMateriaMenor;
+      final idG2 = cabe.idMateriaMaior;
+      final professoresG1 = idG1 == par.idMateriaA ? professoresA : professoresB;
+      final professoresG2 = idG2 == par.idMateriaA ? professoresA : professoresB;
+
+      // Divide o par em blocos de aulas seguidas
       // (ex.: 8 aulas em 2 blocos = 2 conjuntos de 4).
       var faltando = 0;
-      for (final tamanho in dividirEmBlocos(restante, par.quantidadeBlocos)) {
+      final tamanhos = cabe.tamanhosBlocos;
+      final juntas = cabe.juntasPorBloco;
+      for (var i = 0; i < tamanhos.length; i++) {
         if (!_tentarColocarBlocoPar(
           curso: curso,
-          idMateriaA: par.idMateriaA,
-          idMateriaB: par.idMateriaB,
-          tamanhoBloco: tamanho,
-          professoresA: professoresA,
-          professoresB: professoresB,
+          idMateriaG1: idG1,
+          idMateriaG2: idG2,
+          tamanhoBloco: tamanhos[i],
+          juntasNoBloco: juntas[i],
+          professoresG1: professoresG1,
+          professoresG2: professoresG2,
           indisponibilidades: indisponibilidades,
           trabalhando: trabalhando,
           novasAulas: novasAulas,
         )) {
-          faltando += tamanho;
+          faltando += tamanhos[i];
         }
       }
       if (faltando > 0) {
@@ -360,19 +382,23 @@ class GeradorHorario {
     }
   }
 
-  /// Coloca um bloco de aulas seguidas do par: G1 numa matéria e G2 na outra,
-  /// com os mesmos dois professores durante todo o bloco.
+  /// Coloca um bloco de aulas seguidas do par, com os mesmos dois professores
+  /// durante todo o bloco: nos [juntasNoBloco] primeiros horários G1 tem uma
+  /// matéria e G2 a outra; no resto só o G2 tem aula (G1 livre).
   bool _tentarColocarBlocoPar({
     required Curso curso,
-    required String idMateriaA,
-    required String idMateriaB,
+    required String idMateriaG1,
+    required String idMateriaG2,
     required int tamanhoBloco,
-    required List<Professor> professoresA,
-    required List<Professor> professoresB,
+    required int juntasNoBloco,
+    required List<Professor> professoresG1,
+    required List<Professor> professoresG2,
     required List<IndisponibilidadeProfessor> indisponibilidades,
     required List<Aula> trabalhando,
     required List<Aula> novasAulas,
   }) {
+    // Bloco só com o G2 (sem horário junto): não precisa de professor do G1.
+    final opcoesG1 = juntasNoBloco == 0 ? <Professor?>[null] : professoresG1;
     // 1ª tentativa: blocos do par em dias diferentes; 2ª: aceita repetir o dia.
     for (final permitirMesmoDia in const [false, true]) {
       for (final faixaPeriodos in _fasesPeriodo(curso.preferenciaPeriodo)) {
@@ -381,18 +407,19 @@ class GeradorHorario {
             faixaPeriodos,
             tamanhoBloco,
           )) {
-            for (final professorA in professoresA) {
-              for (final professorB in professoresB) {
-                if (professorA.id == professorB.id) continue;
+            for (final professorG1 in opcoesG1) {
+              for (final professorG2 in professoresG2) {
+                if (professorG1?.id == professorG2.id) continue;
                 if (!_blocoParCabe(
                   idCurso: curso.id,
-                  idMateriaA: idMateriaA,
-                  idMateriaB: idMateriaB,
-                  idProfessorA: professorA.id,
-                  idProfessorB: professorB.id,
+                  idMateriaG1: idMateriaG1,
+                  idMateriaG2: idMateriaG2,
+                  idProfessorG1: professorG1?.id,
+                  idProfessorG2: professorG2.id,
                   dia: dia,
                   periodoInicio: periodoInicio,
                   tamanhoBloco: tamanhoBloco,
+                  juntasNoBloco: juntasNoBloco,
                   idSala: curso.idSala,
                   indisponibilidades: indisponibilidades,
                   trabalhando: trabalhando,
@@ -401,21 +428,23 @@ class GeradorHorario {
                   continue;
                 }
                 for (var d = 0; d < tamanhoBloco; d++) {
+                  if (d < juntasNoBloco) {
+                    _registrarAula(
+                      idCurso: curso.id,
+                      idMateria: idMateriaG1,
+                      idProfessor: professorG1!.id,
+                      dia: dia,
+                      periodo: periodoInicio + d,
+                      idSala: curso.idSala,
+                      grupo: 1,
+                      trabalhando: trabalhando,
+                      novasAulas: novasAulas,
+                    );
+                  }
                   _registrarAula(
                     idCurso: curso.id,
-                    idMateria: idMateriaA,
-                    idProfessor: professorA.id,
-                    dia: dia,
-                    periodo: periodoInicio + d,
-                    idSala: curso.idSala,
-                    grupo: 1,
-                    trabalhando: trabalhando,
-                    novasAulas: novasAulas,
-                  );
-                  _registrarAula(
-                    idCurso: curso.id,
-                    idMateria: idMateriaB,
-                    idProfessor: professorB.id,
+                    idMateria: idMateriaG2,
+                    idProfessor: professorG2.id,
                     dia: dia,
                     periodo: periodoInicio + d,
                     idSala: curso.idSala,
@@ -436,13 +465,14 @@ class GeradorHorario {
 
   bool _blocoParCabe({
     required String idCurso,
-    required String idMateriaA,
-    required String idMateriaB,
-    required String idProfessorA,
-    required String idProfessorB,
+    required String idMateriaG1,
+    required String idMateriaG2,
+    required String? idProfessorG1,
+    required String idProfessorG2,
     required int dia,
     required int periodoInicio,
     required int tamanhoBloco,
+    required int juntasNoBloco,
     required String? idSala,
     required List<IndisponibilidadeProfessor> indisponibilidades,
     required List<Aula> trabalhando,
@@ -452,7 +482,7 @@ class GeradorHorario {
         trabalhando.any(
           (a) =>
               a.idCurso == idCurso &&
-              (a.idMateria == idMateriaA || a.idMateria == idMateriaB) &&
+              (a.idMateria == idMateriaG1 || a.idMateria == idMateriaG2) &&
               a.indiceDia == dia,
         )) {
       return false;
@@ -473,7 +503,12 @@ class GeradorHorario {
       }
 
       final celula = CelulaGrade(indiceDia: dia, indicePeriodo: periodo);
-      for (final idProfessor in [idProfessorA, idProfessorB]) {
+      // O professor do G1 só dá aula nos horários juntos; depois fica livre.
+      final professores = [
+        idProfessorG2,
+        if (d < juntasNoBloco && idProfessorG1 != null) idProfessorG1,
+      ];
+      for (final idProfessor in professores) {
         if (trabalhando.any(
           (a) =>
               a.idProfessor == idProfessor &&

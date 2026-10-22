@@ -13,6 +13,7 @@ import 'package:flutter_test_project/model/professor/professor_materia.dart';
 import 'package:flutter_test_project/model/sala/sala.dart';
 import 'package:flutter_test_project/pages/page3/helpers/acoes_horario.dart';
 import 'package:flutter_test_project/pages/page3/helpers/regras_horario.dart';
+import 'package:flutter_test_project/pages/page3/widgets/campo_horario_periodo.dart';
 import 'package:flutter_test_project/pages/page3/widgets/celula_horario.dart';
 import 'package:flutter_test_project/pages/page3/widgets/painel_validacao_horario.dart';
 import 'package:flutter_test_project/providers/providers.dart';
@@ -31,9 +32,9 @@ class PainelGradeCurso extends ConsumerWidget {
     required this.ligacoes,
     required this.indisponibilidades,
     required this.salas,
+    this.horarios = const {},
     required this.ocupado,
-    required this.aoGerar,
-    required this.aoPdf,
+    this.aoSalvarHorario,
     required this.aoLimpar,
     required this.aoFechar,
     required this.aoTocarCelula,
@@ -50,9 +51,12 @@ class PainelGradeCurso extends ConsumerWidget {
   final List<ProfessorMateria> ligacoes;
   final List<IndisponibilidadeProfessor> indisponibilidades;
   final List<Sala> salas;
+  /// Texto do horário de cada período (global, vale para todas as turmas).
+  final Map<int, String> horarios;
   final bool ocupado;
-  final VoidCallback? aoGerar;
-  final VoidCallback? aoPdf;
+
+  /// O usuário mudou o texto do horário de um período.
+  final void Function(int indicePeriodo, String texto)? aoSalvarHorario;
   final VoidCallback? aoLimpar;
   final VoidCallback aoFechar;
   final Future<void> Function({required CelulaGrade celula}) aoTocarCelula;
@@ -70,26 +74,6 @@ class PainelGradeCurso extends ConsumerWidget {
       titulo: 'Horário — ${curso.nome}',
       icone: Icons.table_chart_outlined,
       acoes: [
-        TextButton(
-          onPressed: aoGerar,
-          style: TextButton.styleFrom(
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            minimumSize: Size.zero,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-          child: const Text('Gerar'),
-        ),
-        TextButton(
-          onPressed: aoPdf,
-          style: TextButton.styleFrom(
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            minimumSize: Size.zero,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-          child: const Text('PDF'),
-        ),
         IconButton(
           onPressed: aoLimpar,
           tooltip: 'Limpar grade',
@@ -135,6 +119,16 @@ class PainelGradeCurso extends ConsumerWidget {
               if (ocupado) const LinearProgressIndicator(minHeight: 2),
               Expanded(
                 child: GradeHoraria(
+                  larguraRotulo: 120,
+                  construirRotuloPeriodo: (indicePeriodo) =>
+                      CampoHorarioPeriodo(
+                        key: ValueKey('horario-$indicePeriodo'),
+                        rotulo: GradeHoraria.periodos[indicePeriodo],
+                        texto: horarios[indicePeriodo] ?? '',
+                        aoSalvar: aoSalvarHorario == null
+                            ? null
+                            : (texto) => aoSalvarHorario!(indicePeriodo, texto),
+                      ),
                   construirCelula: (celula) {
                     return CelulaHorario(
                       celula: celula,

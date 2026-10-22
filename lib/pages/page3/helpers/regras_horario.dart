@@ -56,6 +56,12 @@ List<Aula> aulasNaCelula(List<Aula> aulas, String idCurso, CelulaGrade celula) {
     ..sort((a, b) => a.grupo.compareTo(b.grupo));
 }
 
+/// Turma dividida em que só o grupo 2 tem aula: o grupo 1 está livre
+/// (parte da aula geminada em que só a matéria maior tem aula, ou par em
+/// que o grupo 1 foi excluído).
+bool turmaDivididaComGrupoLivre(List<Aula> aulasNaCelula) =>
+    aulasNaCelula.length == 1 && aulasNaCelula.single.grupo == 2;
+
 /// Próximo número de grupo livre (1 ou 2) na célula, ou null se cheia.
 int? proximoGrupoLivre(List<Aula> aulasNaCelula, {String? idAulaExcluida}) {
   final usados = aulasNaCelula
@@ -320,6 +326,12 @@ List<Aula> aulasQueMovemJunto({
   required List<Aula> todasAulas,
   required List<AulaGeminadaCurso> aulasGeminadas,
 }) {
+  final paresDoCurso = aulasGeminadas
+      .where((p) => p.idCurso == aula.idCurso)
+      .toList();
+
+  /// Aulas da célula se ela faz parte de um conjunto geminado: os dois
+  /// grupos do par, ou só o grupo 2 (grupo 1 livre) de uma matéria de par.
   List<Aula>? parNaCelula(int periodo) {
     if (periodo < 0 || periodo >= GradeHoraria.periodos.length) return null;
     if (!GradeHoraria.periodosNaMesmaFaixa(periodo, aula.indicePeriodo)) {
@@ -330,25 +342,37 @@ List<Aula> aulasQueMovemJunto({
       aula.idCurso,
       CelulaGrade(indiceDia: aula.indiceDia, indicePeriodo: periodo),
     );
-    if (naCelula.length != 2) return null;
-    if (!existeAulaGeminada(
-      idCurso: aula.idCurso,
-      idMateriaA: naCelula.first.idMateria,
-      idMateriaB: naCelula.last.idMateria,
-      aulasGeminadas: aulasGeminadas,
-    )) {
-      return null;
+    if (naCelula.length == 2 &&
+        existeAulaGeminada(
+          idCurso: aula.idCurso,
+          idMateriaA: naCelula.first.idMateria,
+          idMateriaB: naCelula.last.idMateria,
+          aulasGeminadas: aulasGeminadas,
+        )) {
+      return naCelula;
     }
-    return naCelula;
+    if (turmaDivididaComGrupoLivre(naCelula) &&
+        paresDoCurso.any((p) => p.contemMateria(naCelula.single.idMateria))) {
+      return naCelula;
+    }
+    return null;
   }
 
   final daCelula = parNaCelula(aula.indicePeriodo);
   if (daCelula == null) return [aula];
 
-  bool mesmoPar(List<Aula> outra) {
-    final materias = {for (final a in daCelula) a.idMateria};
-    return outra.every((a) => materias.contains(a.idMateria));
-  }
+  // Matérias que podem fazer parte do mesmo conjunto: as dos pares que
+  // contêm as matérias da célula arrastada.
+  final materiasDoConjunto = <String>{
+    for (final par in paresDoCurso)
+      if (daCelula.every((a) => par.contemMateria(a.idMateria))) ...[
+        par.idMateriaA,
+        par.idMateriaB,
+      ],
+  };
+
+  bool mesmoPar(List<Aula> outra) =>
+      outra.every((a) => materiasDoConjunto.contains(a.idMateria));
 
   final conjunto = <Aula>[...daCelula];
   for (var p = aula.indicePeriodo - 1; ; p--) {
@@ -434,7 +458,13 @@ String? validarMoverAulas({
           a.indicePeriodo == nova.indicePeriodo,
     );
 
-    if (outras.any((a) => a.idCurso == nova.idCurso)) {
+    final daTurma = outras.where((a) => a.idCurso == nova.idCurso).toList();
+    if (turmaDivididaComGrupoLivre(daTurma)) {
+      return 'Horário dividido: em ${_rotulo(celula)} a turma está em 2 '
+          'grupos e o grupo 1 fica livre (aula geminada). Não dá para '
+          'soltar aula aqui.';
+    }
+    if (daTurma.isNotEmpty) {
       return ehConjunto
           ? 'Horário ocupado: a aula geminada precisa de $horarios '
                 'horário(s) vazios seguidos (${_rotulo(celula)} já tem aula).'

@@ -3,6 +3,7 @@ import 'package:flutter_test_project/model/aula/aula.dart';
 import 'package:flutter_test_project/model/curso/aula_geminada_curso.dart';
 import 'package:flutter_test_project/model/curso/curso.dart';
 import 'package:flutter_test_project/model/curso/carga_curso_materia.dart';
+import 'package:flutter_test_project/model/horario/horario_periodo.dart';
 import 'package:flutter_test_project/model/professor/professor.dart';
 import 'package:flutter_test_project/model/professor/professor_materia.dart';
 import 'package:flutter_test_project/model/professor/indisponibilidade_professor.dart';
@@ -45,6 +46,14 @@ final provedorAulasGeminadasCurso = StreamProvider<List<AulaGeminadaCurso>>((
 
 final provedorAulas = StreamProvider<List<Aula>>((ref) {
   return ref.read(provedorRepositorioAula).observarTodos();
+});
+
+final provedorHorariosPeriodo = StreamProvider<List<HorarioPeriodo>>((ref) {
+  return ref.read(provedorRepositorioHorarioPeriodo).observarTodos();
+});
+
+final provedorTiposSala = StreamProvider<List<TipoSala>>((ref) {
+  return ref.read(provedorRepositorioTipoSala).observarTodos();
 });
 
 final provedorIndisponibilidades =

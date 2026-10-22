@@ -38,15 +38,31 @@ class _LinhaAulaGeminada {
     this.idMateriaA,
     this.idMateriaB,
     int quantidadePeriodos = 1,
+    int? quantidadePeriodosB,
     this.quantidadeBlocos = 1,
-  }) : controladorPeriodos = TextEditingController(text: '$quantidadePeriodos');
+  }) : controladorPeriodos = TextEditingController(text: '$quantidadePeriodos'),
+       // Vazio = mesma quantidade da matéria A.
+       controladorPeriodosB = TextEditingController(
+         text: quantidadePeriodosB == null ||
+                 quantidadePeriodosB == quantidadePeriodos
+             ? ''
+             : '$quantidadePeriodosB',
+       );
 
   String? idMateriaA;
   String? idMateriaB;
+
+  /// Aulas da matéria A dentro da geminada.
   final TextEditingController controladorPeriodos;
+
+  /// Aulas da matéria B (vazio = igual à A).
+  final TextEditingController controladorPeriodosB;
   int quantidadeBlocos;
 
-  void dispose() => controladorPeriodos.dispose();
+  void dispose() {
+    controladorPeriodos.dispose();
+    controladorPeriodosB.dispose();
+  }
 }
 
 Future<ResultadoFormularioCurso?> mostrarDialogoFormularioCurso(
@@ -136,7 +152,8 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
           (par) => _LinhaAulaGeminada(
             idMateriaA: par.idMateriaA,
             idMateriaB: par.idMateriaB,
-            quantidadePeriodos: par.quantidadePeriodos,
+            quantidadePeriodos: par.quantidadeA,
+            quantidadePeriodosB: par.quantidadeB,
             quantidadeBlocos: par.quantidadeBlocos,
           ),
         )
@@ -207,9 +224,23 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
     }
   }
 
-  int _aulasGeminada(_LinhaAulaGeminada row) {
+  int _aulasA(_LinhaAulaGeminada row) {
     final count = int.tryParse(row.controladorPeriodos.text.trim());
     return count == null || count < 1 ? 1 : count;
+  }
+
+  int _aulasB(_LinhaAulaGeminada row) {
+    final texto = row.controladorPeriodosB.text.trim();
+    if (texto.isEmpty) return _aulasA(row);
+    final count = int.tryParse(texto);
+    return count == null || count < 1 ? 1 : count;
+  }
+
+  /// Horários ocupados pelo par: a matéria com mais aulas define.
+  int _aulasGeminada(_LinhaAulaGeminada row) {
+    final a = _aulasA(row);
+    final b = _aulasB(row);
+    return a > b ? a : b;
   }
 
   /// Menos blocos que isso deixaria um bloco maior que um turno.
@@ -296,11 +327,17 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
         return;
       }
 
-      final periodos = int.tryParse(row.controladorPeriodos.text.trim());
-      if (periodos == null || periodos < 1) {
+      final periodosA = int.tryParse(row.controladorPeriodos.text.trim());
+      final textoB = row.controladorPeriodosB.text.trim();
+      final periodosB = textoB.isEmpty ? periodosA : int.tryParse(textoB);
+      if (periodosA == null ||
+          periodosA < 1 ||
+          periodosB == null ||
+          periodosB < 1) {
         setState(() => _erro = 'Aulas da aula geminada deve ser um número ≥ 1');
         return;
       }
+      final periodos = periodosA > periodosB ? periodosA : periodosB;
       final blocos = row.quantidadeBlocos;
       if (blocos < 1 || blocos > periodos) {
         setState(
@@ -320,15 +357,15 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
       }
       final cargaA = cargaPorMateria[idMateriaA] ?? 0;
       final cargaB = cargaPorMateria[idMateriaB] ?? 0;
-      if (periodos > cargaA || periodos > cargaB) {
+      if (periodosA > cargaA || periodosB > cargaB) {
         setState(
           () =>
               _erro = 'Aulas geminadas não podem passar da carga das matérias',
         );
         return;
       }
-      final usadoA = (periodosPorMateria[idMateriaA] ?? 0) + periodos;
-      final usadoB = (periodosPorMateria[idMateriaB] ?? 0) + periodos;
+      final usadoA = (periodosPorMateria[idMateriaA] ?? 0) + periodosA;
+      final usadoB = (periodosPorMateria[idMateriaB] ?? 0) + periodosB;
       if (usadoA > cargaA || usadoB > cargaB) {
         setState(
           () => _erro =
@@ -343,7 +380,8 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
         idCurso: widget.idCurso,
         idMateriaA: idMateriaA,
         idMateriaB: idMateriaB,
-        quantidadePeriodos: periodos,
+        quantidadePeriodos: periodosA,
+        quantidadePeriodosB: periodosB,
         quantidadeBlocos: blocos,
       );
       if (!paresVistos.add(par.chave)) {
@@ -496,7 +534,32 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
                                 });
                               },
                               decoration: const InputDecoration(
-                                labelText: 'Aulas',
+                                labelText: 'Aulas de A',
+                                isDense: true,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              key: ValueKey('gem-aulas-b-$i'),
+                              controller:
+                                  _linhasGeminadas[i].controladorPeriodosB,
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                              ],
+                              onChanged: (_) {
+                                setState(() {
+                                  final row = _linhasGeminadas[i];
+                                  row.quantidadeBlocos = _valorBlocosGeminada(
+                                    row,
+                                  );
+                                });
+                              },
+                              decoration: const InputDecoration(
+                                labelText: 'Aulas de B',
+                                hintText: 'igual a A',
                                 isDense: true,
                               ),
                             ),

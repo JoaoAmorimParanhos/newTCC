@@ -90,13 +90,31 @@ class ValidadorHorario {
                 par.formaPar(lista.first.idMateria, lista.last.idMateria),
           )
           .length;
-      if (juntas != par.quantidadePeriodos) {
-        final nomeA = subjectById[par.idMateriaA] ?? 'Matéria';
-        final nomeB = subjectById[par.idMateriaB] ?? 'Matéria';
+      final nomeA = subjectById[par.idMateriaA] ?? 'Matéria';
+      final nomeB = subjectById[par.idMateriaB] ?? 'Matéria';
+      if (juntas != par.juntas) {
         problemas.add(
           'Aula geminada $nomeA + $nomeB: '
-          '$juntas/${par.quantidadePeriodos} aulas juntas',
+          '$juntas/${par.juntas} aulas juntas',
         );
+      }
+      // Horários com a turma dividida e só a matéria maior (G1 livre).
+      if (par.periodosSoMaior > 0) {
+        final soMaior = porCelula.values
+            .where(
+              (lista) =>
+                  turmaDivididaComGrupoLivre(lista) &&
+                  lista.single.idMateria == par.idMateriaMaior,
+            )
+            .length;
+        if (soMaior != par.periodosSoMaior) {
+          final nomeMaior = subjectById[par.idMateriaMaior] ?? 'Matéria';
+          problemas.add(
+            'Aula geminada $nomeA + $nomeB: '
+            '$soMaior/${par.periodosSoMaior} aulas só de $nomeMaior '
+            '(grupo 1 livre)',
+          );
+        }
       }
     }
 
@@ -158,9 +176,11 @@ class ValidadorHorario {
   bool _periodoCompativel(PreferenciaPeriodo preferencia, int indicePeriodo) {
     final dentroDaGrade =
         indicePeriodo >= 0 && indicePeriodo < GradeHoraria.periodos.length;
+    final noite = GradeHoraria.faixaDoPeriodo(indicePeriodo) == 2;
     return switch (preferencia) {
       PreferenciaPeriodo.manhaTarde || PreferenciaPeriodo.tardeManha =>
-        dentroDaGrade,
+        dentroDaGrade && !noite,
+      PreferenciaPeriodo.noite => dentroDaGrade && noite,
     };
   }
 

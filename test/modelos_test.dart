@@ -3,6 +3,7 @@ import 'package:flutter_test_project/model/aula/aula.dart';
 import 'package:flutter_test_project/model/curso/aula_geminada_curso.dart';
 import 'package:flutter_test_project/model/curso/carga_curso_materia.dart';
 import 'package:flutter_test_project/model/curso/curso.dart';
+import 'package:flutter_test_project/model/horario/horario_periodo.dart';
 import 'package:flutter_test_project/model/curso/preferencia_periodo.dart';
 import 'package:flutter_test_project/model/sala/sala.dart';
 
@@ -97,8 +98,77 @@ void main() {
         'id_materia_a': 10,
         'id_materia_b': 11,
         'quantidade_periodos': 8,
+        'quantidade_periodos_b': 8,
         'quantidade_blocos': 2,
       });
+    });
+
+    test('cargas diferentes: A = 2 e B = 4 ocupam 4 horários', () {
+      final par = AulaGeminadaCurso(
+        idCurso: '1',
+        idMateriaA: '10',
+        idMateriaB: '11',
+        quantidadePeriodos: 2,
+        quantidadePeriodosB: 4,
+        quantidadeBlocos: 1,
+      );
+      expect(par.juntas, 2);
+      expect(par.periodosOcupados, 4);
+      expect(par.periodosSoMaior, 2);
+      expect(par.idMateriaMaior, '11');
+      expect(par.idMateriaMenor, '10');
+      expect(par.tamanhosBlocos, [4]);
+      expect(par.juntasPorBloco, [2]);
+    });
+
+    test('cargas diferentes em 2 blocos dividem as juntas também', () {
+      final par = AulaGeminadaCurso(
+        idCurso: '1',
+        idMateriaA: '10',
+        idMateriaB: '11',
+        quantidadePeriodos: 1,
+        quantidadePeriodosB: 4,
+        quantidadeBlocos: 2,
+      );
+      expect(par.tamanhosBlocos, [2, 2]);
+      expect(par.juntasPorBloco, [1, 0]);
+    });
+
+    test('ao ordenar o par pelo id, as quantidades trocam junto', () {
+      final par = AulaGeminadaCurso(
+        idCurso: '1',
+        idMateriaA: '11',
+        idMateriaB: '10',
+        quantidadePeriodos: 4,
+        quantidadePeriodosB: 2,
+      );
+      expect(par.idMateriaA, '10');
+      expect(par.quantidadeA, 2);
+      expect(par.quantidadeB, 4);
+      expect(par.toInsertJson()['quantidade_periodos'], 2);
+      expect(par.toInsertJson()['quantidade_periodos_b'], 4);
+    });
+
+    test('lê quantidade_periodos_b; sem a coluna, B = A', () {
+      final diferente = AulaGeminadaCurso.fromJson({
+        'id_curso': 1,
+        'id_materia_a': 10,
+        'id_materia_b': 11,
+        'quantidade_periodos': 2,
+        'quantidade_periodos_b': 4,
+        'quantidade_blocos': 1,
+      });
+      expect(diferente.quantidadeA, 2);
+      expect(diferente.quantidadeB, 4);
+
+      final antigo = AulaGeminadaCurso.fromJson({
+        'id_curso': 1,
+        'id_materia_a': 10,
+        'id_materia_b': 11,
+        'quantidade_periodos': 3,
+        'quantidade_blocos': 1,
+      });
+      expect(antigo.quantidadeB, 3);
     });
 
     test('ordena as matérias do par pelo id', () {
@@ -174,12 +244,31 @@ void main() {
     expect(c.turnoCompartilhado, isFalse);
   });
 
-  test('Sala lê o tipo e monta o rótulo', () {
+  test('Sala lê o tipo (tabela tb_tipo_sala) e monta o rótulo', () {
     final s = Sala.fromJson({
       'id': 3,
       'numero': 2,
-      'tipo': 'laboratorio_informatica',
+      'id_tipo_sala': 7,
+      'tipo': {'id': 7, 'nome': 'Quadra'},
     });
-    expect(s.rotulo, 'Laboratório de informática 2');
+    expect(s.tipo, const TipoSala(id: '7', nome: 'Quadra'));
+    expect(s.rotulo, 'Quadra 2');
+    expect(s.toInsertJson(), {'numero': 2, 'id_tipo_sala': 7});
+  });
+
+  test('Curso noturno é lido e gravado como "noite"', () {
+    final c = Curso.fromJson({
+      'id': 1,
+      'nome': 'Info Noite',
+      'periodo_preferencia': 'noite',
+    });
+    expect(c.preferenciaPeriodo, PreferenciaPeriodo.noite);
+    expect(c.toInsertJson()['periodo_preferencia'], 'noite');
+  });
+
+  test('HorarioPeriodo converte o período 0-based ↔ 1-based', () {
+    final h = HorarioPeriodo.fromJson({'periodo': 13, 'texto': '19:00 – 19:45'});
+    expect(h.indicePeriodo, 12);
+    expect(h.toJson(), {'periodo': 13, 'texto': '19:00 – 19:45'});
   });
 }
