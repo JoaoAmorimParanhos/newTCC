@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_test_project/pages/page3/helpers/formato_horario.dart';
 import 'package:flutter_test_project/theme/app_theme.dart';
 
-/// Rótulo do período ("1º M") com o horário editável embaixo, como texto
-/// livre. Salva ao apertar Enter ou ao sair do campo.
+/// Rótulo do período ("1º M") com o horário editável embaixo, só com
+/// números no molde "00:00 - 00:00". Salva ao apertar Enter ou ao sair do
+/// campo; horário inválido não é salvo e o campo volta ao valor anterior.
 class CampoHorarioPeriodo extends StatefulWidget {
   const CampoHorarioPeriodo({
     super.key,
@@ -22,6 +24,7 @@ class CampoHorarioPeriodo extends StatefulWidget {
 class _CampoHorarioPeriodoState extends State<CampoHorarioPeriodo> {
   late final _controlador = TextEditingController(text: widget.texto);
   final _foco = FocusNode();
+  String? _erro;
 
   @override
   void initState() {
@@ -50,7 +53,19 @@ class _CampoHorarioPeriodoState extends State<CampoHorarioPeriodo> {
 
   void _confirmar() {
     final texto = _controlador.text.trim();
+    // Sem mudança. Não limpa o erro: depois do Enter o campo perde o foco e
+    // passa por aqui de novo; o erro some quando a pessoa volta a digitar.
     if (texto == widget.texto) return;
+    final erro = validarHorario(texto);
+    if (erro != null) {
+      // Não salva: volta ao horário que já estava gravado.
+      setState(() {
+        _erro = erro;
+        _controlador.text = widget.texto;
+      });
+      return;
+    }
+    setState(() => _erro = null);
     widget.aoSalvar?.call(texto);
   }
 
@@ -75,12 +90,20 @@ class _CampoHorarioPeriodoState extends State<CampoHorarioPeriodo> {
             enabled: widget.aoSalvar != null,
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 12),
+            keyboardType: TextInputType.number,
+            inputFormatters: const [MascaraHorarioFormatter()],
+            onChanged: (_) {
+              if (_erro != null) setState(() => _erro = null);
+            },
             onSubmitted: (_) => _confirmar(),
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               isDense: true,
-              hintText: '00:00 - 00:00',
-              contentPadding: EdgeInsets.symmetric(vertical: 4),
+              hintText: moldeHorario,
+              contentPadding: const EdgeInsets.symmetric(vertical: 4),
               border: InputBorder.none,
+              errorText: _erro,
+              errorMaxLines: 2,
+              errorStyle: const TextStyle(fontSize: 9),
             ),
           ),
         ],

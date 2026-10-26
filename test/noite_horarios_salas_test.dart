@@ -255,15 +255,20 @@ void main() {
       // 16 períodos editáveis, inclusive os da noite.
       expect(find.byType(CampoHorarioPeriodo), findsNWidgets(16));
 
-      await tester.enterText(campo(0), '07:30 – 08:20');
+      // Digita só os números: o campo coloca ":" e " - " sozinho.
+      await tester.enterText(campo(0), '07300820');
+      expect(
+        tester.widget<TextField>(campo(0)).controller!.text,
+        '07:30 - 08:20',
+      );
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pump(const Duration(milliseconds: 300));
 
-      expect(repo.salvos, {0: '07:30 – 08:20'});
+      expect(repo.salvos, {0: '07:30 - 08:20'});
     });
 
     testWidgets('o horário vale para todas as turmas', (tester) async {
-      final repo = _RepositorioHorarioFalso()..salvos[12] = '19:00 – 19:45';
+      final repo = _RepositorioHorarioFalso()..salvos[12] = '19:00 - 19:45';
       await abrir(tester, repo);
 
       for (final turma in ['Info 1', 'Info 2']) {
@@ -271,22 +276,90 @@ void main() {
         await tester.pump(const Duration(milliseconds: 300));
         expect(
           tester.widget<TextField>(campo(12)).controller!.text,
-          '19:00 – 19:45',
+          '19:00 - 19:45',
         );
       }
     });
 
-    testWidgets('aceita qualquer texto, sem validar', (tester) async {
+    Future<void> digitarEConfirmar(
+      WidgetTester tester,
+      int indicePeriodo,
+      String texto,
+    ) async {
+      await tester.enterText(campo(indicePeriodo), texto);
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+
+    String textoDoCampo(WidgetTester tester, int indicePeriodo) =>
+        tester.widget<TextField>(campo(indicePeriodo)).controller!.text;
+
+    testWidgets('letras e símbolos não entram, só números', (tester) async {
       final repo = _RepositorioHorarioFalso();
       await abrir(tester, repo);
       await tester.tap(find.text('Info 1'));
       await tester.pump(const Duration(milliseconds: 300));
 
+      await tester.enterText(campo(6), 'abc;!?');
+      expect(textoDoCampo(tester, 6), '');
+
       await tester.enterText(campo(6), '7:50 até 8:00 (?)');
-      await tester.testTextInput.receiveAction(TextInputAction.done);
+      expect(textoDoCampo(tester, 6), '75:08 - 00');
+    });
+
+    testWidgets('horário incompleto não é salvo e o campo volta', (
+      tester,
+    ) async {
+      final repo = _RepositorioHorarioFalso()..salvos[6] = '13:00 - 13:50';
+      await abrir(tester, repo);
+      await tester.tap(find.text('Info 1'));
       await tester.pump(const Duration(milliseconds: 300));
 
-      expect(repo.salvos[6], '7:50 até 8:00 (?)');
+      await digitarEConfirmar(tester, 6, '1300');
+
+      expect(repo.salvos[6], '13:00 - 13:50');
+      expect(textoDoCampo(tester, 6), '13:00 - 13:50');
+      expect(find.text('Use 00:00 - 00:00'), findsOneWidget);
+    });
+
+    testWidgets('hora ou minuto impossível não é salvo', (tester) async {
+      final repo = _RepositorioHorarioFalso();
+      await abrir(tester, repo);
+      await tester.tap(find.text('Info 1'));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      await digitarEConfirmar(tester, 0, '25000900');
+      expect(find.text('Hora vai até 23'), findsOneWidget);
+
+      await digitarEConfirmar(tester, 1, '07600900');
+      expect(find.text('Minuto vai até 59'), findsOneWidget);
+
+      expect(repo.salvos, isEmpty);
+    });
+
+    testWidgets('horários que não fazem sentido entre si são aceitos', (
+      tester,
+    ) async {
+      final repo = _RepositorioHorarioFalso();
+      await abrir(tester, repo);
+      await tester.tap(find.text('Info 1'));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // Termina antes de começar: o formato está certo, então salva.
+      await digitarEConfirmar(tester, 6, '08000750');
+
+      expect(repo.salvos[6], '08:00 - 07:50');
+    });
+
+    testWidgets('apagar o campo apaga o horário', (tester) async {
+      final repo = _RepositorioHorarioFalso()..salvos[0] = '07:30 - 08:20';
+      await abrir(tester, repo);
+      await tester.tap(find.text('Info 1'));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      await digitarEConfirmar(tester, 0, '');
+
+      expect(repo.salvos[0], '');
     });
   });
 
