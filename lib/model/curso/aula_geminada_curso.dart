@@ -44,8 +44,6 @@ class AulaGeminadaCurso {
     required this.quantidadeBlocos,
   });
 
-  /// Maior bloco possível: um turno inteiro.
-  static const int maxAulasPorBloco = 6;
 
   final String idCurso;
   final String idMateriaA;
@@ -78,8 +76,10 @@ class AulaGeminadaCurso {
   /// Matéria do grupo 1: a de menos aulas (A se forem iguais).
   String get idMateriaMenor => idMateriaMaior == idMateriaA ? idMateriaB : idMateriaA;
 
-  int quantidadeDe(String idMateria) =>
-      idMateria == idMateriaA ? quantidadeA : quantidadeB;
+  int quantidadeDe(String idMateria) {
+    assert(contemMateria(idMateria), 'matéria fora do par');
+    return idMateria == idMateriaA ? quantidadeA : quantidadeB;
+  }
 
   /// Tamanho de cada bloco, o mais igual possível (5 em 2 blocos = [3, 2]).
   List<int> get tamanhosBlocos =>

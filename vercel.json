@@ -1,5 +1,5 @@
 {
-  "buildCommand": "if [ ! -d /tmp/flutter ]; then git clone https://github.com/flutter/flutter.git -b stable --depth 1 /tmp/flutter; fi && export PATH=\"$PATH:/tmp/flutter/bin\" && flutter config --enable-web && flutter pub get && flutter build web --release --base-href /",
+  "buildCommand": "if [ ! -d /tmp/flutter ]; then git clone https://github.com/flutter/flutter.git -b 3.47.7 --depth 1 /tmp/flutter; fi && export PATH=\"$PATH:/tmp/flutter/bin\" && flutter config --enable-web && flutter pub get && flutter build web --release --base-href /",
   "outputDirectory": "build/web",
   "rewrites": [
     {

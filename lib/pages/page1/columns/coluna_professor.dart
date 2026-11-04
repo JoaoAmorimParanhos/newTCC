@@ -7,12 +7,13 @@ import 'package:flutter_test_project/components/cartao_item.dart';
 import 'package:flutter_test_project/model/professor/professor.dart';
 import 'package:flutter_test_project/model/materia/materia.dart';
 import 'package:flutter_test_project/providers/providers.dart';
+import 'package:flutter_test_project/services/arrumacao_grupos.dart';
 
 class ColunaProfessor extends ConsumerWidget {
   const ColunaProfessor({super.key});
 
   List<Materia> _materiasOuVazio(AsyncValue<List<Materia>> subjectsAsync) {
-    return subjectsAsync.value ?? const [];
+    return subjectsAsync.valueOrNull ?? const [];
   }
 
   Future<void> _criar(BuildContext context, WidgetRef ref) async {
@@ -43,8 +44,15 @@ class ColunaProfessor extends ConsumerWidget {
     Professor professor,
   ) async {
     final materias = _materiasOuVazio(ref.read(provedorMaterias));
-    final currentIds =
-        await ref.read(provedorRepositorioProfessor).buscarIdsMaterias(professor.id);
+    final List<String> currentIds;
+    try {
+      currentIds = await ref
+          .read(provedorRepositorioProfessor)
+          .buscarIdsMaterias(professor.id);
+    } catch (e) {
+      if (context.mounted) _mostrarErro(context, e);
+      return;
+    }
     if (!context.mounted) return;
 
     final result = await mostrarDialogoFormularioProfessor(
@@ -84,7 +92,24 @@ class ColunaProfessor extends ConsumerWidget {
     if (!confirmed) return;
 
     try {
+      final repoAula = ref.read(provedorRepositorioAula);
+      final todasAulas = await repoAula.buscarTodos();
+      final pares = await ref
+          .read(provedorRepositorioCurso)
+          .buscarTodasAulasGeminadas();
+      // Se ele dava o grupo 2 de um par, o grupo 1 que sobra passa para o
+      // grupo 2 (G1 livre), como ao excluir o grupo 2 na grade.
+      final paraGrupo2 = aulasQueVaoParaGrupo2(
+        excluidas: todasAulas
+            .where((a) => a.idProfessor == professor.id)
+            .toList(),
+        todasAulas: todasAulas,
+        pares: pares,
+      );
       await ref.read(provedorRepositorioProfessor).excluir(professor.id);
+      for (final aula in paraGrupo2) {
+        await repoAula.atualizar(aula);
+      }
       ref.invalidate(provedorProfessores);
       ref.invalidate(provedorProfessorMaterias);
       ref.invalidate(provedorAulas);
@@ -125,7 +150,7 @@ class ColunaProfessor extends ConsumerWidget {
             );
           }
 
-          final ligacoes = linksAsync.value ?? const [];
+          final ligacoes = linksAsync.valueOrNull ?? const [];
           return ListView(
             padding: const EdgeInsets.symmetric(vertical: 8),
             children: professores.map((professor) {

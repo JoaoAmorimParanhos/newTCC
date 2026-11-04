@@ -6,7 +6,6 @@ class Curso {
     required this.nome,
     this.idSala,
     this.preferenciaPeriodo = PreferenciaPeriodo.manhaTarde,
-    this.turnoCompartilhado = false,
   });
 
   final String id;
@@ -15,11 +14,9 @@ class Curso {
   /// Sala padrão do curso (opcional).
   final String? idSala;
 
-  /// Começa pela manhã e completa na tarde, ou o inverso.
+  /// Turno(s) que o gerador usa: só manhã, só tarde, só noite, ou um turno
+  /// com contraturno (CT) no outro.
   final PreferenciaPeriodo preferenciaPeriodo;
-
-  /// Se true, a turma pode ter 2 aulas no mesmo horário (2 grupos).
-  final bool turnoCompartilhado;
 
   factory Curso.fromJson(Map<String, dynamic> json) => Curso(
         id: json['id'].toString(),
@@ -28,7 +25,6 @@ class Curso {
         preferenciaPeriodo: PreferenciaPeriodo.fromDb(
           json['periodo_preferencia'] as String?,
         ),
-        turnoCompartilhado: json['turno_compartilhado'] as bool? ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -36,13 +32,11 @@ class Curso {
         'nome': nome,
         if (idSala != null) 'id_sala': int.parse(idSala!),
         'periodo_preferencia': preferenciaPeriodo.toDb(),
-        'turno_compartilhado': turnoCompartilhado,
       };
 
   Map<String, dynamic> toInsertJson() => {
         'nome': nome,
         if (idSala != null) 'id_sala': int.parse(idSala!),
         'periodo_preferencia': preferenciaPeriodo.toDb(),
-        'turno_compartilhado': turnoCompartilhado,
       };
 }

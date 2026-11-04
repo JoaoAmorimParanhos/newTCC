@@ -89,7 +89,7 @@ void main() {
       }
     });
 
-    test('validador avisa aula de dia em turma noturna (e vice-versa)', () {
+    test('aula em outro turno não gera aviso (edição manual é livre)', () {
       List<String> problemas(Curso turma, int periodo) => const ValidadorHorario()
           .validarCurso(
             idCurso: '1',
@@ -107,9 +107,9 @@ void main() {
           .problemas;
 
       final noturna = curso(preferencia: PreferenciaPeriodo.noite);
-      expect(problemas(noturna, 0), contains('Aula fora do período da turma (Seg 1º M)'));
+      expect(problemas(noturna, 0), isEmpty);
       expect(problemas(noturna, 12), isEmpty);
-      expect(problemas(curso(), 12), contains('Aula fora do período da turma (Seg 1º N)'));
+      expect(problemas(curso(), 12), isEmpty);
     });
 
     group('PDF: quais turnos aparecem', () {
@@ -304,7 +304,8 @@ void main() {
       expect(textoDoCampo(tester, 6), '');
 
       await tester.enterText(campo(6), '7:50 até 8:00 (?)');
-      expect(textoDoCampo(tester, 6), '75:08 - 00');
+      // Colado com hora de 1 dígito: completa com zero.
+      expect(textoDoCampo(tester, 6), '07:50 - 08:00');
     });
 
     testWidgets('horário incompleto não é salvo e o campo volta', (

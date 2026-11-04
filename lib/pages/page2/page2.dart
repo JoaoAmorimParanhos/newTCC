@@ -67,9 +67,9 @@ class _Page2State extends ConsumerState<Page2> {
   Widget build(BuildContext context) {
     final professorsAsync = ref.watch(provedorProfessores);
     final unavailabilityAsync = ref.watch(provedorIndisponibilidades);
-    final professores = professorsAsync.value ?? const <Professor>[];
+    final professores = professorsAsync.valueOrNull ?? const <Professor>[];
     final linhas =
-        unavailabilityAsync.value ?? const <IndisponibilidadeProfessor>[];
+        unavailabilityAsync.valueOrNull ?? const <IndisponibilidadeProfessor>[];
 
     // Se o professor foi excluído na Página 1, limpa a seleção.
     final selecionado = _professorSelecionado == null
@@ -135,8 +135,7 @@ class _Page2State extends ConsumerState<Page2> {
                       const Center(child: CircularProgressIndicator()),
                   error: (e, _) => DicaColunaVazia(
                     mensagem:
-                        'Erro ao carregar indisponibilidade '
-                        '(crie tb_professor_indisponibilidade no Supabase):\n$e',
+                        'Erro ao carregar a indisponibilidade:\n$e',
                   ),
                 ),
               )

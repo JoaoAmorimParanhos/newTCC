@@ -200,7 +200,8 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
 
   int _limiteBloco(_LinhaCarga row) {
     final pelaCarga = _quantidadeAulas(row);
-    return pelaCarga < 6 ? pelaCarga : 6;
+    final turno = _preferenciaPeriodo.maxAulasPorBloco;
+    return pelaCarga < turno ? pelaCarga : turno;
   }
 
   int _valorBloco(_LinhaCarga row) {
@@ -245,7 +246,7 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
 
   /// Menos blocos que isso deixaria um bloco maior que um turno.
   int _minimoBlocosGeminada(_LinhaAulaGeminada row) {
-    const maximo = AulaGeminadaCurso.maxAulasPorBloco;
+    final maximo = _preferenciaPeriodo.maxAulasPorBloco;
     return (_aulasGeminada(row) + maximo - 1) ~/ maximo;
   }
 
@@ -347,11 +348,11 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
         return;
       }
       if (dividirEmBlocos(periodos, blocos).first >
-          AulaGeminadaCurso.maxAulasPorBloco) {
+          _preferenciaPeriodo.maxAulasPorBloco) {
         setState(
           () => _erro =
               'Cada bloco geminado pode ter no máximo '
-              '${AulaGeminadaCurso.maxAulasPorBloco} aulas (um turno)',
+              '${_preferenciaPeriodo.maxAulasPorBloco} aulas (um turno)',
         );
         return;
       }
@@ -639,9 +640,7 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
               DropdownButtonFormField<PreferenciaPeriodo>(
                 key: ValueKey('period-$_preferenciaPeriodo'),
                 initialValue: _preferenciaPeriodo,
-                decoration: const InputDecoration(
-                  labelText: 'Período das aulas',
-                ),
+                decoration: const InputDecoration(labelText: 'Turno'),
                 items: PreferenciaPeriodo.values
                     .map(
                       (value) => DropdownMenuItem(
@@ -651,9 +650,17 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
                     )
                     .toList(),
                 onChanged: (value) {
-                  if (value != null) {
-                    setState(() => _preferenciaPeriodo = value);
-                  }
+                  if (value == null) return;
+                  setState(() {
+                    _preferenciaPeriodo = value;
+                    // A noite só tem 4 horários: blocos maiores encolhem.
+                    for (final row in _linhas) {
+                      _ajustarBloco(row);
+                    }
+                    for (final row in _linhasGeminadas) {
+                      row.quantidadeBlocos = _valorBlocosGeminada(row);
+                    }
+                  });
                 },
               ),
               const SizedBox(height: 12),

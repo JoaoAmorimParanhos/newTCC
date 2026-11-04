@@ -5,20 +5,22 @@ import 'package:flutter_test_project/components/dialogs/dialogo_confirmar_exclus
 import 'package:flutter_test_project/components/dialogs/dialogo_formulario_curso.dart';
 import 'package:flutter_test_project/components/cartao_item.dart';
 import 'package:flutter_test_project/model/curso/aula_geminada_curso.dart';
+import 'package:flutter_test_project/model/curso/carga_curso_materia.dart';
 import 'package:flutter_test_project/model/curso/curso.dart';
 import 'package:flutter_test_project/model/sala/sala.dart';
 import 'package:flutter_test_project/model/materia/materia.dart';
 import 'package:flutter_test_project/providers/providers.dart';
+import 'package:flutter_test_project/services/arrumacao_grupos.dart';
 
 class ColunaCurso extends ConsumerWidget {
   const ColunaCurso({super.key});
 
   List<Materia> _materiasOuVazio(AsyncValue<List<Materia>> subjectsAsync) {
-    return subjectsAsync.value ?? const [];
+    return subjectsAsync.valueOrNull ?? const [];
   }
 
   List<Sala> _salasOuVazio(AsyncValue<List<Sala>> roomsAsync) {
-    return roomsAsync.value ?? const [];
+    return roomsAsync.valueOrNull ?? const [];
   }
 
   Future<void> _criar(BuildContext context, WidgetRef ref) async {
@@ -39,7 +41,6 @@ class ColunaCurso extends ConsumerWidget {
             result.nome,
             idSala: result.idSala,
             preferenciaPeriodo: result.preferenciaPeriodo,
-            turnoCompartilhado: result.aulasGeminadas.isNotEmpty,
             cargas: result.cargas,
             aulasGeminadas: result.aulasGeminadas,
           );
@@ -60,8 +61,15 @@ class ColunaCurso extends ConsumerWidget {
     final materias = _materiasOuVazio(ref.read(provedorMaterias));
     final salas = _salasOuVazio(ref.read(provedorSalas));
     final repo = ref.read(provedorRepositorioCurso);
-    final cargas = await repo.buscarCargas(course.id);
-    final aulasGeminadas = await repo.buscarAulasGeminadas(course.id);
+    final List<CargaCursoMateria> cargas;
+    final List<AulaGeminadaCurso> aulasGeminadas;
+    try {
+      cargas = await repo.buscarCargas(course.id);
+      aulasGeminadas = await repo.buscarAulasGeminadas(course.id);
+    } catch (e) {
+      if (context.mounted) _mostrarErro(context, e);
+      return;
+    }
     if (!context.mounted) return;
 
     final result = await mostrarDialogoFormularioCurso(
@@ -85,10 +93,15 @@ class ColunaCurso extends ConsumerWidget {
           nome: result.nome,
           idSala: result.idSala,
           preferenciaPeriodo: result.preferenciaPeriodo,
-          turnoCompartilhado: result.aulasGeminadas.isNotEmpty,
         ),
         cargas: result.cargas,
         aulasGeminadas: result.aulasGeminadas,
+      );
+      // Par tirado do curso: aulas que estavam sozinhas no grupo 2 viram
+      // aulas completas.
+      await arrumarGruposSemPar(
+        repoAula: ref.read(provedorRepositorioAula),
+        repoCurso: repo,
       );
       ref.invalidate(provedorCursos);
       ref.invalidate(provedorCargasCurso);
@@ -138,7 +151,7 @@ class ColunaCurso extends ConsumerWidget {
     final geminatedAsync = ref.watch(provedorAulasGeminadasCurso);
     final roomsAsync = ref.watch(provedorSalas);
     final salasPorId = {
-      for (final r in roomsAsync.value ?? const <Sala>[]) r.id: r,
+      for (final r in roomsAsync.valueOrNull ?? const <Sala>[]) r.id: r,
     };
 
     return ColunaQuadro(
@@ -158,9 +171,9 @@ class ColunaCurso extends ConsumerWidget {
             return const DicaColunaVazia(mensagem: 'Nenhum curso cadastrado');
           }
 
-          final cargas = loadsAsync.value ?? const [];
+          final cargas = loadsAsync.valueOrNull ?? const [];
           final aulasGeminadas =
-              geminatedAsync.value ?? const <AulaGeminadaCurso>[];
+              geminatedAsync.valueOrNull ?? const <AulaGeminadaCurso>[];
           return ListView(
             padding: const EdgeInsets.symmetric(vertical: 8),
             children: cursos.map((course) {

@@ -7,6 +7,7 @@ import 'package:flutter_test_project/model/curso/carga_curso_materia.dart';
 import 'package:flutter_test_project/model/professor/professor.dart';
 import 'package:flutter_test_project/model/professor/professor_materia.dart';
 import 'package:flutter_test_project/model/professor/indisponibilidade_professor.dart';
+import 'package:flutter_test_project/pages/page3/helpers/regras_horario.dart';
 
 class ResultadoGeracao {
   const ResultadoGeracao({
@@ -160,7 +161,13 @@ class GeradorHorario {
         continue;
       }
 
-      final blocos = _blocosPara(restante, carga.tamanhoBloco);
+      // Bloco não passa do tamanho do turno (noite: 4), mesmo se a carga
+      // foi salva com um bloco maior.
+      final limiteBloco = curso.preferenciaPeriodo.maxAulasPorBloco;
+      final blocos = _blocosPara(
+        restante,
+        carga.tamanhoBloco > limiteBloco ? limiteBloco : carga.tamanhoBloco,
+      );
       final fasesPeriodo = _fasesPeriodo(curso.preferenciaPeriodo);
 
       for (final tamanhoBloco in blocos) {
@@ -243,16 +250,8 @@ class GeradorHorario {
     return blocos;
   }
 
-  List<List<int>> _fasesPeriodo(PreferenciaPeriodo preferencia) {
-    final manha = GradeHoraria.periodosManha;
-    final tarde = GradeHoraria.periodosTarde;
-    return switch (preferencia) {
-      PreferenciaPeriodo.manhaTarde => [manha, tarde],
-      PreferenciaPeriodo.tardeManha => [tarde, manha],
-      // Turma noturna só usa a noite.
-      PreferenciaPeriodo.noite => [GradeHoraria.periodosNoite],
-    };
-  }
+  List<List<int>> _fasesPeriodo(PreferenciaPeriodo preferencia) =>
+      preferencia.turnos;
 
   Iterable<int> _periodosInicio(
     List<int> faixaPeriodos,
@@ -336,13 +335,20 @@ class GeradorHorario {
       final cabeA = caber(par.idMateriaA);
       final cabeB = caber(par.idMateriaB);
       if (cabeA == 0 || cabeB == 0) continue;
+      // Nenhum bloco pode passar do tamanho do turno da turma (noite: 4).
+      // Par antigo com bloco maior é dividido em mais blocos.
+      final limite = curso.preferenciaPeriodo.maxAulasPorBloco;
+      final ocupados = cabeA > cabeB ? cabeA : cabeB;
+      final blocosMinimos = (ocupados + limite - 1) ~/ limite;
       final cabe = AulaGeminadaCurso(
         idCurso: curso.id,
         idMateriaA: par.idMateriaA,
         idMateriaB: par.idMateriaB,
         quantidadePeriodos: cabeA,
         quantidadePeriodosB: cabeB,
-        quantidadeBlocos: par.quantidadeBlocos,
+        quantidadeBlocos: par.quantidadeBlocos < blocosMinimos
+            ? blocosMinimos
+            : par.quantidadeBlocos,
       );
 
       // G1 = matéria de menos aulas; G2 = a de mais aulas (fica sozinha
@@ -374,9 +380,11 @@ class GeradorHorario {
         }
       }
       if (faltando > 0) {
+        // As aulas que não couberam juntas entram depois como aulas comuns
+        // (turma inteira), se ainda houver espaço.
         falhas.add(
-          'Não coube aula geminada de $nomeA e $nomeB '
-          '($faltando aula(s) faltando).',
+          'Não coube aula geminada de $nomeA e $nomeB em $faltando '
+          'horário(s); essas aulas foram colocadas como aulas comuns.',
         );
       }
     }
@@ -517,7 +525,7 @@ class GeradorHorario {
         )) {
           return false;
         }
-        if (_estaIndisponivel(indisponibilidades, idProfessor, celula)) {
+        if (estaIndisponivel(indisponibilidades, idProfessor, celula)) {
           return false;
         }
       }
@@ -672,23 +680,10 @@ class GeradorHorario {
         return false;
       }
 
-      if (_estaIndisponivel(indisponibilidades, idProfessor, celula)) {
+      if (estaIndisponivel(indisponibilidades, idProfessor, celula)) {
         return false;
       }
     }
     return true;
-  }
-
-  bool _estaIndisponivel(
-    List<IndisponibilidadeProfessor> linhas,
-    String idProfessor,
-    CelulaGrade celula,
-  ) {
-    return linhas.any(
-      (u) =>
-          u.idProfessor == idProfessor &&
-          u.indiceDia == celula.indiceDia &&
-          u.indicePeriodo == celula.indicePeriodo,
-    );
   }
 }

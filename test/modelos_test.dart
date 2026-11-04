@@ -241,7 +241,6 @@ void main() {
       'periodo_preferencia': 'tarde',
     });
     expect(c.preferenciaPeriodo, PreferenciaPeriodo.tardeManha);
-    expect(c.turnoCompartilhado, isFalse);
   });
 
   test('Sala lê o tipo (tabela tb_tipo_sala) e monta o rótulo', () {

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_test_project/components/dialogs/dialogo_formulario_curso.dart';
 import 'package:flutter_test_project/model/curso/aula_geminada_curso.dart';
 import 'package:flutter_test_project/model/curso/carga_curso_materia.dart';
+import 'package:flutter_test_project/model/curso/preferencia_periodo.dart';
 
 import 'apoio/dados.dart';
 
@@ -16,6 +17,7 @@ Future<_Abertura> _abrir(
   WidgetTester tester, {
   List<CargaCursoMateria> cargas = const [],
   List<AulaGeminadaCurso> pares = const [],
+  PreferenciaPeriodo preferencia = PreferenciaPeriodo.manhaTarde,
 }) async {
   tester.view.physicalSize = const Size(1400, 1200);
   tester.view.devicePixelRatio = 1;
@@ -34,6 +36,7 @@ Future<_Abertura> _abrir(
                 materias: materiasPadrao,
                 salas: salasPadrao,
                 nomeInicial: 'Info 1',
+                preferenciaPeriodoInicial: preferencia,
                 cargasIniciais: cargas,
                 aulasGeminadasIniciais: pares,
                 idCurso: '1',
@@ -202,6 +205,55 @@ void main() {
         find.text('Aulas geminadas não podem passar da carga das matérias'),
         findsOneWidget,
       );
+    });
+
+    testWidgets('turma da noite: bloco geminado tem no máximo 4 aulas', (
+      tester,
+    ) async {
+      await _abrir(
+        tester,
+        cargas: _cargas8,
+        pares: [par(informatica.id, ingles.id, aulas: 8, blocos: 2)],
+        preferencia: PreferenciaPeriodo.noite,
+      );
+
+      // 8 aulas em blocos de até 4: no mínimo 2 blocos.
+      expect(await _opcoesBlocos(tester, 0), [
+        '2', '3', '4', '5', '6', '7', '8',
+      ]);
+    });
+
+    testWidgets('trocar o turno para Noite divide blocos grandes', (
+      tester,
+    ) async {
+      await _abrir(
+        tester,
+        cargas: _cargas8,
+        pares: [par(informatica.id, ingles.id, aulas: 6, blocos: 1)],
+      );
+      expect(_blocosSelecionados(tester, 0), 1);
+
+      await tester.tap(_porPrefixo('period-'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Noite').last);
+      await tester.pumpAndSettle();
+
+      expect(_blocosSelecionados(tester, 0), 2);
+    });
+
+    testWidgets('as 5 opções de turno aparecem', (tester) async {
+      await _abrir(tester, cargas: _cargas8);
+      await tester.tap(_porPrefixo('period-'));
+      await tester.pumpAndSettle();
+      for (final rotulo in [
+        'Manhã',
+        'Tarde',
+        'Noite',
+        'Manhã CT: Tarde',
+        'Tarde CT: Manhã',
+      ]) {
+        expect(find.text(rotulo), findsWidgets, reason: rotulo);
+      }
     });
 
     testWidgets('blocos vão no máximo até o número de aulas', (tester) async {

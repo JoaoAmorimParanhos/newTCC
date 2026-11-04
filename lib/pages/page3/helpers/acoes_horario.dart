@@ -22,7 +22,10 @@ import 'package:flutter_test_project/services/gerador_horario.dart';
 class AcoesHorario {
   AcoesHorario(this.ref);
 
-  final WidgetRef ref;
+  /// Container do ProviderScope: continua válido mesmo se a tela que
+  /// iniciou a ação sair da árvore no meio de uma gravação.
+
+  final ProviderContainer ref;
 
   /// Grava o texto do horário do período. Vale para todas as turmas.
   Future<void> salvarHorarioPeriodo(int indicePeriodo, String texto) async {
@@ -34,16 +37,19 @@ class AcoesHorario {
 
   Future<String?> limparCurso({
     required BuildContext context,
+    required VoidCallback iniciarGravacao,
     required Curso curso,
   }) async {
     final confirmado = await mostrarDialogoConfirmarExclusao(
       context,
       titulo: 'Limpar grade',
       mensagem:
-          'Remover todas as aulas de "${curso.nome}"? Esta ação não desfaz.',
+          'Remover todas as aulas de "${curso.nome}"? '
+          'Esta ação não pode ser desfeita.',
     );
     if (!confirmado) return null;
 
+    iniciarGravacao();
     await ref.read(provedorRepositorioAula).excluirPorCurso(curso.id);
     ref.invalidate(provedorAulas);
     return 'Grade de "${curso.nome}" limpa.';
@@ -51,6 +57,7 @@ class AcoesHorario {
 
   Future<String?> gerarTodos({
     required BuildContext context,
+    required VoidCallback iniciarGravacao,
     required List<Curso> cursos,
     required List<CargaCursoMateria> cargas,
     required List<Professor> professores,
@@ -65,11 +72,13 @@ class AcoesHorario {
       mensagem:
           'Regenerar os horários de todas as turmas? '
           'Isso apaga os horários atuais e recria com base nas '
-          'configurações da Página 1.',
+          'configurações da Página 1 e nas indisponibilidades da '
+          'Página 2. Esta ação não pode ser desfeita.',
       rotuloConfirmar: 'Gerar',
     );
     if (!confirmado) return null;
 
+    iniciarGravacao();
     // Gera antes de apagar: se nada couber, a grade atual fica intacta.
     final resultado = const GeradorHorario().gerarTodos(
       cursos: cursos,
@@ -90,24 +99,16 @@ class AcoesHorario {
     }
 
     final repo = ref.read(provedorRepositorioAula);
-    final anteriores = await repo.buscarTodos();
-    await repo.excluirTodas();
-
     try {
-      await repo.adicionarVarias(resultado.novasAulas);
+      // Troca a grade inteira numa transação só: se falhar, nada muda.
+      await repo.substituirTodas(resultado.novasAulas);
     } catch (e) {
-      // Restaura a grade anterior para não deixar o banco vazio.
-      try {
-        await repo.excluirTodas();
-        await repo.adicionarVarias(anteriores);
-      } finally {
-        ref.invalidate(provedorAulas);
-      }
       final detalhe = e is PostgrestException ? e.message : '$e';
       return 'Não foi possível salvar o horário gerado '
-          '(grade anterior restaurada): $detalhe';
+          '(grade anterior mantida): $detalhe';
+    } finally {
+      ref.invalidate(provedorAulas);
     }
-    ref.invalidate(provedorAulas);
 
     if (resultado.completo) {
       return 'Horários gerados: ${resultado.novasAulas.length} aula(s) alocadas.';
@@ -118,6 +119,7 @@ class AcoesHorario {
 
   Future<String?> aoTocarCelula({
     required BuildContext context,
+    required VoidCallback iniciarGravacao,
     required CelulaGrade celula,
     required Curso curso,
     required List<Materia> materiasCurso,
@@ -197,8 +199,27 @@ class AcoesHorario {
               )
               .toList();
 
+    String? motivoRecusa(
+      ResultadoFormularioAula r,
+      List<Aula> aulas,
+    ) => validarSalvarAula(
+      curso: curso,
+      celula: celula,
+      idMateria: r.idMateria,
+      idProfessor: r.idProfessor,
+      idSala: r.idSala,
+      existente: existente,
+      grupo: grupo,
+      cargas: cargas,
+      aulasGeminadas: aulasGeminadas,
+      todasAulas: aulas,
+      ligacoes: ligacoes,
+      indisponibilidades: indisponibilidades,
+    );
+
     final resultado = await mostrarDialogoFormularioAula(
       context,
+      validar: (r) => motivoRecusa(r, todasAulas),
       titulo: titulo,
       materias: materiasParaDialogoAula(
         materiasCurso: materiasPermitidas,
@@ -228,6 +249,7 @@ class AcoesHorario {
 
     if (resultado is ExclusaoFormularioAula) {
       if (existente == null) return null;
+      iniciarGravacao();
       final repo = ref.read(provedorRepositorioAula);
       await repo.excluir(existente.id);
       // Aula geminada continua dividida: a que sobra fica no grupo 2 e o
@@ -254,21 +276,14 @@ class AcoesHorario {
 
     if (resultado is! ResultadoFormularioAula) return null;
 
-    final erro = validarSalvarAula(
-      curso: curso,
-      celula: celula,
-      idMateria: resultado.idMateria,
-      idProfessor: resultado.idProfessor,
-      idSala: resultado.idSala,
-      existente: existente,
-      grupo: grupo,
-      cargas: cargas,
-      aulasGeminadas: aulasGeminadas,
-      todasAulas: todasAulas,
-      ligacoes: ligacoes,
-      indisponibilidades: indisponibilidades,
+    // Confere de novo com as aulas mais recentes: a grade pode ter mudado
+    // enquanto o diálogo estava aberto.
+    final erro = motivoRecusa(
+      resultado,
+      ref.read(provedorAulas).valueOrNull ?? todasAulas,
     );
     if (erro != null) return erro;
+    iniciarGravacao();
 
     final aula = Aula(
       id: existente?.id ?? '0',
@@ -317,6 +332,7 @@ class AcoesHorario {
   /// Move a aula arrastada (ou o conjunto geminado dela) para [destino].
   /// Retorna a mensagem de recusa, ou null se moveu.
   Future<String?> moverAula({
+    required VoidCallback iniciarGravacao,
     required Aula aula,
     required CelulaGrade destino,
     required List<Aula> todasAulas,
@@ -344,6 +360,7 @@ class AcoesHorario {
       indisponibilidades: indisponibilidades,
     );
     if (motivo != null) return 'Não foi possível mover. $motivo';
+    iniciarGravacao();
 
     final repo = ref.read(provedorRepositorioAula);
     final deslocamento = destino.indicePeriodo - aula.indicePeriodo;
@@ -382,7 +399,7 @@ class AcoesHorario {
           ),
           SimpleDialogOption(
             onPressed: () => Navigator.pop(context, _AcaoCelula.adicionarGrupo),
-            child: const Text('Adicionar 2º grupo'),
+            child: const Text('Adicionar outro grupo'),
           ),
           SimpleDialogOption(
             onPressed: () => Navigator.pop(context),

@@ -218,7 +218,7 @@ void main() {
       expect(r.falhas.any((f) => f.contains('falta professor')), isTrue);
     });
 
-    test('avisa quando não cabe e diz quantas aulas faltaram', () {
+    test('avisa quando não cabe e que virou aula comum', () {
       // Bruno só pode no 1º período de segunda: o bloco de 2 não cabe.
       final r = _gerar(
         cargas: [carga(informatica.id, 2), carga(ingles.id, 2)],
@@ -235,7 +235,12 @@ void main() {
         r.falhas.any((f) => f.contains('Não coube aula geminada')),
         isTrue,
       );
-      expect(r.falhas.any((f) => f.contains('2 aula(s) faltando')), isTrue);
+      expect(
+        r.falhas.any(
+          (f) => f.contains('2 horário(s); essas aulas foram colocadas como aulas comuns'),
+        ),
+        isTrue,
+      );
     });
   });
 }

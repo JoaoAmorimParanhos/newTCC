@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import 'package:flutter_test_project/components/grade_horaria.dart';
 import 'package:flutter_test_project/model/aula/aula.dart';
 import 'package:flutter_test_project/model/curso/curso.dart';
-import 'package:flutter_test_project/model/curso/preferencia_periodo.dart';
 import 'package:flutter_test_project/model/materia/materia.dart';
 import 'package:flutter_test_project/model/professor/professor.dart';
 import 'package:flutter_test_project/model/sala/sala.dart';
@@ -166,24 +165,28 @@ class ExportadorHorarioPdf {
 
   /// Grade montada em colunas (uma por dia) para que aulas seguidas iguais
   /// ocupem várias linhas sem mudar o tamanho da grade.
-  /// Turnos impressos: os da turma (noturna: noite; as outras: manhã e
-  /// tarde) e, além deles, qualquer turno que tenha aula, para nenhuma aula
-  /// ficar de fora. Ex.: turma diurna com aula à noite imprime o Jantar e a
-  /// noite; sem aula à noite, não imprime.
+  /// Turnos impressos, em ordem do dia: os do turno da turma (ex.: "Manhã
+  /// CT: Tarde" → manhã e tarde; "Noite" → noite) e, além deles, qualquer
+  /// turno que tenha aula, para nenhuma aula ficar de fora. Ex.: turma da
+  /// manhã com aula à noite imprime também o Jantar e a noite.
   static List<List<int>> turnosDoCurso(
     Curso curso,
     Map<CelulaGrade, List<Aula>> porCelula,
   ) {
-    final noturna = curso.preferenciaPeriodo == PreferenciaPeriodo.noite;
+    final daTurma = {
+      for (final turno in curso.preferenciaPeriodo.turnos)
+        GradeHoraria.faixaDoPeriodo(turno.first),
+    };
     bool temAula(int faixa) => porCelula.entries.any(
       (e) =>
           e.value.isNotEmpty &&
           GradeHoraria.faixaDoPeriodo(e.key.indicePeriodo) == faixa,
     );
+    bool imprime(int faixa) => daTurma.contains(faixa) || temAula(faixa);
     return [
-      if (!noturna || temAula(0)) GradeHoraria.periodosManha,
-      if (!noturna || temAula(1)) GradeHoraria.periodosTarde,
-      if (noturna || temAula(2)) GradeHoraria.periodosNoite,
+      if (imprime(0)) GradeHoraria.periodosManha,
+      if (imprime(1)) GradeHoraria.periodosTarde,
+      if (imprime(2)) GradeHoraria.periodosNoite,
     ];
   }
 

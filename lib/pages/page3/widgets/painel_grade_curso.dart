@@ -56,7 +56,7 @@ class PainelGradeCurso extends ConsumerWidget {
   final bool ocupado;
 
   /// O usuário mudou o texto do horário de um período.
-  final void Function(int indicePeriodo, String texto)? aoSalvarHorario;
+  final Future<bool> Function(int indicePeriodo, String texto)? aoSalvarHorario;
   final VoidCallback? aoLimpar;
   final VoidCallback aoFechar;
   final Future<void> Function({required CelulaGrade celula}) aoTocarCelula;
@@ -104,6 +104,7 @@ class PainelGradeCurso extends ConsumerWidget {
             materias: materias,
             salas: salas,
             indisponibilidades: indisponibilidades,
+            ligacoes: ligacoes,
           );
 
           return Column(
@@ -161,7 +162,7 @@ class PainelGradeCurso extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => DicaColunaVazia(
           mensagem:
-              'Erro ao carregar aulas (crie a tabela tb_aula no Supabase se ainda não existir):\n$e',
+              'Erro ao carregar as aulas:\n$e',
         ),
       ),
     );

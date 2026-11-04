@@ -349,7 +349,7 @@ void main() {
       await abrir(tester, repo);
 
       await tocar(tester, celulaGrade(0, 2));
-      await tocar(tester, find.text('Adicionar 2º grupo'));
+      await tocar(tester, find.text('Adicionar outro grupo'));
       expect(find.text('Nova aula — Seg 3º M · Grupo 1'), findsOneWidget);
       await escolher(tester, 'subject-', 'Informática');
       await escolher(tester, 'prof-', 'Ana');

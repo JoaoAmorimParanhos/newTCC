@@ -412,8 +412,17 @@ List<Aula> deslocarAulas(
   ];
 }
 
-String _rotulo(CelulaGrade c) =>
-    '${GradeHoraria.dias[c.indiceDia]} ${GradeHoraria.periodos[c.indicePeriodo]}';
+/// "Seg 1º M". Índice fora da grade (dado antigo) não quebra a mensagem.
+String rotuloCelula(CelulaGrade c) {
+  final dentro =
+      c.indiceDia >= 0 &&
+      c.indiceDia < GradeHoraria.dias.length &&
+      c.indicePeriodo >= 0 &&
+      c.indicePeriodo < GradeHoraria.periodos.length;
+  if (!dentro) return 'dia ${c.indiceDia + 1}, período ${c.indicePeriodo + 1}';
+  return '${GradeHoraria.dias[c.indiceDia]} '
+      '${GradeHoraria.periodos[c.indicePeriodo]}';
+}
 
 /// Retorna o motivo para recusar soltar as [movidas] (já na posição nova),
 /// ou null se pode mover.
@@ -460,29 +469,29 @@ String? validarMoverAulas({
 
     final daTurma = outras.where((a) => a.idCurso == nova.idCurso).toList();
     if (turmaDivididaComGrupoLivre(daTurma)) {
-      return 'Horário dividido: em ${_rotulo(celula)} a turma está em 2 '
+      return 'Horário dividido: em ${rotuloCelula(celula)} a turma está em 2 '
           'grupos e o grupo 1 fica livre (aula geminada). Não dá para '
           'soltar aula aqui.';
     }
     if (daTurma.isNotEmpty) {
       return ehConjunto
           ? 'Horário ocupado: a aula geminada precisa de $horarios '
-                'horário(s) vazios seguidos (${_rotulo(celula)} já tem aula).'
+                'horário(s) vazios seguidos (${rotuloCelula(celula)} já tem aula).'
           : 'Horário ocupado: solte a aula numa célula vazia '
-                '(${_rotulo(celula)} já tem aula).';
+                '(${rotuloCelula(celula)} já tem aula).';
     }
 
     final nomeProfessor = nomes[nova.idProfessor] ?? 'Professor';
     if (outras.any((a) => a.idProfessor == nova.idProfessor)) {
-      return '$nomeProfessor já está dando aula em ${_rotulo(celula)}.';
+      return '$nomeProfessor já está dando aula em ${rotuloCelula(celula)}.';
     }
     if (estaIndisponivel(indisponibilidades, nova.idProfessor, celula)) {
-      return '$nomeProfessor está indisponível em ${_rotulo(celula)} '
+      return '$nomeProfessor está indisponível em ${rotuloCelula(celula)} '
           '(Página 2).';
     }
     final idSala = nova.idSala;
     if (idSala != null && outras.any((a) => a.idSala == idSala)) {
-      return 'A sala já está ocupada por outra turma em ${_rotulo(celula)}.';
+      return 'A sala já está ocupada por outra turma em ${rotuloCelula(celula)}.';
     }
   }
   return null;

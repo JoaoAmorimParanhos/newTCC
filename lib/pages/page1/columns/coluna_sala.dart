@@ -21,7 +21,7 @@ class ColunaSala extends ConsumerWidget {
       context,
       titulo: 'Nova sala',
       rotulo: 'Número da sala',
-      tipos: ref.read(provedorTiposSala).value ?? const [],
+      tipos: ref.read(provedorTiposSala).valueOrNull ?? const [],
       aoCriarTipo: (nome) => _criarTipo(ref, nome),
     );
     if (dados == null) return;
@@ -50,7 +50,7 @@ class ColunaSala extends ConsumerWidget {
       context,
       titulo: 'Editar sala',
       rotulo: 'Número da sala',
-      tipos: ref.read(provedorTiposSala).value ?? const [],
+      tipos: ref.read(provedorTiposSala).valueOrNull ?? const [],
       aoCriarTipo: (nome) => _criarTipo(ref, nome),
       numeroInicial: room.numero,
       tipoInicial: room.tipo,

@@ -21,25 +21,75 @@ String formatarDigitosHorario(String digitos) {
 class MascaraHorarioFormatter extends TextInputFormatter {
   const MascaraHorarioFormatter();
 
+  static final _naoDigito = RegExp(r'\D');
+
+  /// Horários colados com hora de 1 dígito ("7:30 - 8:20", "07h30 às 8h20")
+  /// viram "07300820". Null se não houver nenhum "H:MM" no texto.
+  static String? _lerColado(String texto) {
+    final achados = RegExp(r'(\d{1,2})\s*[:hH]\s*(\d{2})').allMatches(texto);
+    if (achados.isEmpty) return null;
+    return achados
+        .take(2)
+        .map((m) => m.group(1)!.padLeft(2, '0') + m.group(2)!)
+        .join();
+  }
+
   @override
   TextEditingValue formatEditUpdate(
     TextEditingValue antigo,
     TextEditingValue novo,
   ) {
-    var digitos = novo.text.replaceAll(RegExp(r'\D'), '');
-    final digitosAntigos = antigo.text.replaceAll(RegExp(r'\D'), '');
-    // Apagar só um separador (":" ou " - ") apaga o número antes dele,
-    // senão o separador voltaria na hora e o backspace "travaria".
-    if (novo.text.length < antigo.text.length &&
+    final cursor = novo.selection.isValid
+        ? novo.selection.end.clamp(0, novo.text.length)
+        : novo.text.length;
+    var digitos = novo.text.replaceAll(_naoDigito, '');
+    // Quantos números ficam antes do cursor: é onde ele volta a ficar.
+    var antes = novo.text.substring(0, cursor).replaceAll(_naoDigito, '').length;
+    final digitosAntigos = antigo.text.replaceAll(_naoDigito, '');
+
+    if (novo.text.length - antigo.text.length > 1) {
+      // Colou (ou trocou tudo de uma vez).
+      final colado = _lerColado(novo.text);
+      if (colado != null) {
+        digitos = colado;
+        antes = colado.length;
+      }
+    } else if (novo.text.length < antigo.text.length &&
         digitos == digitosAntigos &&
-        digitos.isNotEmpty) {
-      digitos = digitos.substring(0, digitos.length - 1);
+        antes > 0) {
+      // Apagou só um separador (":" ou " - "): apaga o número à esquerda
+      // dele, senão o separador voltaria na hora e o backspace "travaria".
+      digitos = digitos.substring(0, antes - 1) + digitos.substring(antes);
+      antes--;
     }
+
+    if (digitos.length > 8) {
+      // Digitou no meio de um horário completo: o número novo substitui o
+      // que estava logo depois do cursor.
+      if (antes < digitos.length) {
+        digitos = digitos.substring(0, antes) + digitos.substring(antes + 1);
+      }
+      digitos = digitos.substring(0, 8);
+      if (antes > 8) antes = 8;
+    }
+
     final texto = formatarDigitosHorario(digitos);
     return TextEditingValue(
       text: texto,
-      selection: TextSelection.collapsed(offset: texto.length),
+      selection: TextSelection.collapsed(offset: _posicaoDepoisDe(texto, antes)),
     );
+  }
+
+  /// Posição no [texto] logo depois do número de ordem [quantidade].
+  static int _posicaoDepoisDe(String texto, int quantidade) {
+    if (quantidade <= 0) return 0;
+    var vistos = 0;
+    for (var i = 0; i < texto.length; i++) {
+      if (_naoDigito.hasMatch(texto[i])) continue;
+      vistos++;
+      if (vistos == quantidade) return i + 1;
+    }
+    return texto.length;
   }
 }
 

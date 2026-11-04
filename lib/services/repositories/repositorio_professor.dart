@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'package:flutter_test_project/services/repositories/observar_tabela.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_test_project/model/professor/professor.dart';
@@ -13,68 +13,17 @@ class RepositorioProfessor {
   static const String _table = 'tb_professor';
   static const String _linkTable = 'tb_professor_materia';
 
-  Stream<List<Professor>> observarTodos() {
-    return _watchTable<Professor>(
-      table: _table,
-      channelName: 'watch:$_table',
-      fetch: buscarTodos,
-    );
-  }
+  Stream<List<Professor>> observarTodos() =>
+      observarTabela(client: _client, tabela: _table, buscar: buscarTodos);
 
-  Stream<List<ProfessorMateria>> observarLigacoesMaterias() {
-    return _watchTable<ProfessorMateria>(
-      table: _linkTable,
-      channelName: 'watch:$_linkTable',
-      fetch: buscarTodasLigacoes,
-    );
-  }
-
-  Stream<List<T>> _watchTable<T>({
-    required String table,
-    required String channelName,
-    required Future<List<T>> Function() fetch,
-  }) {
-    final controller = StreamController<List<T>>();
-    var closed = false;
-
-    Future<void> emit() async {
-      try {
-        final data = await fetch();
-        if (!closed && !controller.isClosed) {
-          controller.add(data);
-        }
-      } catch (error, stackTrace) {
-        if (!closed && !controller.isClosed) {
-          controller.addError(error, stackTrace);
-        }
-      }
-    }
-
-    final channel = _client
-        .channel(channelName)
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: table,
-          callback: (_) => unawaited(emit()),
-        )
-        .subscribe();
-
-    unawaited(emit());
-
-    controller.onCancel = () async {
-      closed = true;
-      await _client.removeChannel(channel);
-      if (!controller.isClosed) {
-        await controller.close();
-      }
-    };
-
-    return controller.stream;
-  }
+  Stream<List<ProfessorMateria>> observarLigacoesMaterias() => observarTabela(
+    client: _client,
+    tabela: _linkTable,
+    buscar: buscarTodasLigacoes,
+  );
 
   Future<List<Professor>> buscarTodos() async {
-    final data = await _client.from(_table).select().order('nome');
+    final data = await _client.from(_table).select().order('id', ascending: true);
     return (data as List)
         .map((row) => Professor.fromJson(row as Map<String, dynamic>))
         .toList();
@@ -144,14 +93,8 @@ class RepositorioProfessor {
         );
   }
 
+  /// Aulas, vínculos e o resto ligado a ele saem junto (cascata no banco).
   Future<void> excluir(String id) async {
-    final parsedId = int.parse(id);
-    await _client.from('tb_aula').delete().eq('id_professor', parsedId);
-    await _client
-        .from('tb_professor_indisponibilidade')
-        .delete()
-        .eq('id_professor', parsedId);
-    await _client.from(_linkTable).delete().eq('id_professor', parsedId);
-    await _client.from(_table).delete().eq('id', parsedId);
+    await _client.from(_table).delete().eq('id', int.parse(id));
   }
 }

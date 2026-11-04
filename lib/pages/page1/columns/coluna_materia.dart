@@ -7,12 +7,13 @@ import 'package:flutter_test_project/components/cartao_item.dart';
 import 'package:flutter_test_project/model/materia/materia.dart';
 import 'package:flutter_test_project/model/professor/professor.dart';
 import 'package:flutter_test_project/providers/providers.dart';
+import 'package:flutter_test_project/services/arrumacao_grupos.dart';
 
 class ColunaMateria extends ConsumerWidget {
   const ColunaMateria({super.key});
 
   List<Professor> _professoresOuVazio(WidgetRef ref) {
-    return ref.read(provedorProfessores).value ?? const [];
+    return ref.read(provedorProfessores).valueOrNull ?? const [];
   }
 
   Future<void> _criar(BuildContext context, WidgetRef ref) async {
@@ -98,8 +99,15 @@ class ColunaMateria extends ConsumerWidget {
 
     try {
       await ref.read(provedorRepositorioMateria).excluir(subject.id);
+      // O banco apaga os pares de aula geminada com essa matéria; as aulas
+      // da outra matéria do par que ficaram sozinhas viram aulas completas.
+      await arrumarGruposSemPar(
+        repoAula: ref.read(provedorRepositorioAula),
+        repoCurso: ref.read(provedorRepositorioCurso),
+      );
       ref.invalidate(provedorMaterias);
       ref.invalidate(provedorCargasCurso);
+      ref.invalidate(provedorAulasGeminadasCurso);
       ref.invalidate(provedorProfessorMaterias);
       ref.invalidate(provedorAulas);
     } catch (e) {
@@ -117,7 +125,7 @@ class ColunaMateria extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final subjectsAsync = ref.watch(provedorMaterias);
-    final ligacoes = ref.watch(provedorProfessorMaterias).value ?? const [];
+    final ligacoes = ref.watch(provedorProfessorMaterias).valueOrNull ?? const [];
 
     return ColunaQuadro(
       titulo: 'Matérias',

@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'package:flutter_test_project/services/repositories/observar_tabela.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_test_project/model/sala/sala.dart';
@@ -11,45 +11,8 @@ class RepositorioTipoSala {
 
   static const String _table = 'tb_tipo_sala';
 
-  Stream<List<TipoSala>> observarTodos() {
-    final controller = StreamController<List<TipoSala>>();
-    var closed = false;
-
-    Future<void> emit() async {
-      try {
-        final data = await buscarTodos();
-        if (!closed && !controller.isClosed) {
-          controller.add(data);
-        }
-      } catch (error, stackTrace) {
-        if (!closed && !controller.isClosed) {
-          controller.addError(error, stackTrace);
-        }
-      }
-    }
-
-    final channel = _client
-        .channel('watch:$_table')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: _table,
-          callback: (_) => unawaited(emit()),
-        )
-        .subscribe();
-
-    unawaited(emit());
-
-    controller.onCancel = () async {
-      closed = true;
-      await _client.removeChannel(channel);
-      if (!controller.isClosed) {
-        await controller.close();
-      }
-    };
-
-    return controller.stream;
-  }
+  Stream<List<TipoSala>> observarTodos() =>
+      observarTabela(client: _client, tabela: _table, buscar: buscarTodos);
 
   Future<List<TipoSala>> buscarTodos() async {
     // Em ordem de criação: "Sala de aula" (o padrão) primeiro.

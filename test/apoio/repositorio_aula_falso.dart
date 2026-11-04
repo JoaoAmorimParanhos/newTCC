@@ -10,8 +10,9 @@ class RepositorioAulaFalso implements RepositorioAula {
 
   final List<Aula> aulas = [];
 
-  /// Quantas chamadas de [adicionarVarias] ainda devem falhar.
-  int falhasAoAdicionarVarias = 0;
+  /// Quantas chamadas de [substituirTodas] ainda devem falhar. Como no
+  /// banco (transação), a falha não muda nada.
+  int falhasAoSubstituir = 0;
 
   var _proximoId = 1;
 
@@ -30,15 +31,7 @@ class RepositorioAulaFalso implements RepositorioAula {
   Stream<List<Aula>> observarTodos() => Stream.value(List.of(aulas));
 
   @override
-  Stream<List<Aula>> observarPorCurso(String idCurso) =>
-      Stream.value(aulas.where((a) => a.idCurso == idCurso).toList());
-
-  @override
   Future<List<Aula>> buscarTodos() async => List.of(aulas);
-
-  @override
-  Future<List<Aula>> buscarPorCurso(String idCurso) async =>
-      aulas.where((a) => a.idCurso == idCurso).toList();
 
   @override
   Future<String> adicionar(Aula aula) async {
@@ -48,18 +41,33 @@ class RepositorioAulaFalso implements RepositorioAula {
   }
 
   @override
-  Future<void> adicionarVarias(List<Aula> novas) async {
-    if (falhasAoAdicionarVarias > 0) {
-      falhasAoAdicionarVarias--;
+  Future<void> substituirTodas(List<Aula> novas) async {
+    if (falhasAoSubstituir > 0) {
+      falhasAoSubstituir--;
       throw Exception('falha simulada ao salvar');
     }
-    aulas.addAll(novas.map(_comNovoId));
+    aulas
+      ..clear()
+      ..addAll(novas.map(_comNovoId));
   }
 
   @override
   Future<void> atualizar(Aula aula) async {
     final i = aulas.indexWhere((a) => a.id == aula.id);
-    if (i >= 0) aulas[i] = aula;
+    if (i >= 0) {
+      final atual = aulas[i];
+      // Igual ao banco: atualizar não muda dia nem período.
+      aulas[i] = Aula(
+        id: atual.id,
+        idCurso: atual.idCurso,
+        indiceDia: atual.indiceDia,
+        indicePeriodo: atual.indicePeriodo,
+        idMateria: aula.idMateria,
+        idProfessor: aula.idProfessor,
+        idSala: aula.idSala,
+        grupo: aula.grupo,
+      );
+    }
   }
 
   /// Ordem em que as aulas foram gravadas na última chamada de [moverAulas].
@@ -110,40 +118,4 @@ class RepositorioAulaFalso implements RepositorioAula {
   @override
   Future<void> excluirPorCurso(String idCurso) async =>
       aulas.removeWhere((a) => a.idCurso == idCurso);
-
-  @override
-  Future<void> excluirPorProfessor(String idProfessor) async =>
-      aulas.removeWhere((a) => a.idProfessor == idProfessor);
-
-  @override
-  Future<void> excluirPorMateria(String idMateria) async =>
-      aulas.removeWhere((a) => a.idMateria == idMateria);
-
-  @override
-  Future<void> excluirOrfasDoCurso({
-    required String idCurso,
-    required Set<String> idsMateriasPermitidas,
-  }) async => aulas.removeWhere(
-    (a) => a.idCurso == idCurso && !idsMateriasPermitidas.contains(a.idMateria),
-  );
-
-  @override
-  Future<void> limparIdSala(String idSala) async {
-    for (var i = 0; i < aulas.length; i++) {
-      final a = aulas[i];
-      if (a.idSala != idSala) continue;
-      aulas[i] = Aula(
-        id: a.id,
-        idCurso: a.idCurso,
-        indiceDia: a.indiceDia,
-        indicePeriodo: a.indicePeriodo,
-        idMateria: a.idMateria,
-        idProfessor: a.idProfessor,
-        grupo: a.grupo,
-      );
-    }
-  }
-
-  @override
-  Future<void> excluirTodas() async => aulas.clear();
 }

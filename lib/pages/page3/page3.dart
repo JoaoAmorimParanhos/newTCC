@@ -33,7 +33,11 @@ class _Page3State extends ConsumerState<Page3> {
   Curso? _cursoSelecionado;
   bool _ocupado = false;
 
-  AcoesHorario get _acoes => AcoesHorario(ref);
+  // Usa o container do ProviderScope (não o ref da tela): as ações
+  // continuam funcionando se a pessoa trocar de página no meio de uma
+  // gravação.
+  AcoesHorario get _acoes =>
+      AcoesHorario(ProviderScope.containerOf(context, listen: false));
 
   void _mostrarMensagem(String mensagem) {
     if (!mounted) return;
@@ -44,15 +48,24 @@ class _Page3State extends ConsumerState<Page3> {
 
   void _mostrarErro(Object e) => _mostrarMensagem('Erro: $e');
 
-  Future<void> _comOcupado(Future<String?> Function() acao) async {
-    setState(() => _ocupado = true);
+  /// Roda [acao] e mostra a mensagem que ela devolver. A grade só trava
+  /// quando a ação chama `iniciarGravacao` (depois das confirmações), não
+  /// enquanto a pessoa ainda está decidindo num diálogo.
+  Future<void> _executar(
+    Future<String?> Function(VoidCallback iniciarGravacao) acao,
+  ) async {
+    if (_ocupado) return;
+    void iniciarGravacao() {
+      if (mounted) setState(() => _ocupado = true);
+    }
+
     try {
-      final mensagem = await acao();
+      final mensagem = await acao(iniciarGravacao);
       if (mensagem != null) _mostrarMensagem(mensagem);
     } catch (e) {
       _mostrarErro(e);
     } finally {
-      if (mounted) setState(() => _ocupado = false);
+      if (mounted && _ocupado) setState(() => _ocupado = false);
     }
   }
 
@@ -65,9 +78,10 @@ class _Page3State extends ConsumerState<Page3> {
     required List<AulaGeminadaCurso> aulasGeminadas,
     required List<Materia> materias,
   }) {
-    return _comOcupado(
-      () => _acoes.gerarTodos(
+    return _executar(
+      (iniciarGravacao) => _acoes.gerarTodos(
         context: context,
+        iniciarGravacao: iniciarGravacao,
         cursos: cursos,
         cargas: cargas,
         professores: professores,
@@ -80,8 +94,12 @@ class _Page3State extends ConsumerState<Page3> {
   }
 
   Future<void> _limparCurso(Curso curso) {
-    return _comOcupado(
-      () => _acoes.limparCurso(context: context, curso: curso),
+    return _executar(
+      (iniciarGravacao) => _acoes.limparCurso(
+        context: context,
+        iniciarGravacao: iniciarGravacao,
+        curso: curso,
+      ),
     );
   }
 
@@ -92,8 +110,11 @@ class _Page3State extends ConsumerState<Page3> {
     required List<Professor> professores,
     required List<Sala> salas,
     required Map<int, String> horarios,
-  }) async {
-    try {
+  }) {
+    // Trava enquanto monta o PDF: evita dois diálogos de impressão e
+    // exportar no meio de um "Gerar".
+    return _executar((iniciarGravacao) async {
+      iniciarGravacao();
       final bytes = await const ExportadorHorarioPdf().gerar(
         cursos: cursos,
         aulas: aulas,
@@ -103,16 +124,18 @@ class _Page3State extends ConsumerState<Page3> {
         horarios: horarios,
       );
       await Printing.layoutPdf(onLayout: (_) async => bytes, name: 'horarios');
-    } catch (e) {
-      _mostrarErro(e);
-    }
+      return null;
+    });
   }
 
-  Future<void> _salvarHorario(int indicePeriodo, String texto) async {
+  /// Devolve false se não conseguiu gravar (o campo volta ao valor salvo).
+  Future<bool> _salvarHorario(int indicePeriodo, String texto) async {
     try {
       await _acoes.salvarHorarioPeriodo(indicePeriodo, texto);
+      return true;
     } catch (e) {
       _mostrarErro(e);
+      return false;
     }
   }
 
@@ -128,11 +151,10 @@ class _Page3State extends ConsumerState<Page3> {
     required List<IndisponibilidadeProfessor> indisponibilidades,
     required List<Sala> salas,
   }) async {
-    if (_ocupado) return;
-
-    try {
-      final erro = await _acoes.aoTocarCelula(
+    return _executar(
+      (iniciarGravacao) => _acoes.aoTocarCelula(
         context: context,
+        iniciarGravacao: iniciarGravacao,
         celula: celula,
         curso: curso,
         materiasCurso: materiasDoCurso(curso.id, cargas, materias),
@@ -144,11 +166,8 @@ class _Page3State extends ConsumerState<Page3> {
         aulasGeminadas: aulasGeminadas,
         indisponibilidades: indisponibilidades,
         salas: salas,
-      );
-      if (erro != null) _mostrarErro(erro);
-    } catch (e) {
-      _mostrarErro(e);
-    }
+      ),
+    );
   }
 
   Future<void> _aoSoltarAula({
@@ -159,12 +178,11 @@ class _Page3State extends ConsumerState<Page3> {
     required List<Professor> professores,
     required List<IndisponibilidadeProfessor> indisponibilidades,
   }) async {
-    if (_ocupado) return;
-
     // Bloqueia a grade enquanto grava, para não começar outro arraste
     // com dados antigos; a recusa (se houver) aparece embaixo.
-    return _comOcupado(
-      () => _acoes.moverAula(
+    return _executar(
+      (iniciarGravacao) => _acoes.moverAula(
+        iniciarGravacao: iniciarGravacao,
         aula: aula,
         destino: destino,
         todasAulas: aulas,
@@ -193,17 +211,17 @@ class _Page3State extends ConsumerState<Page3> {
         h.indicePeriodo: h.texto,
     };
 
-    final aulas = aulasAsync.value ?? const <Aula>[];
-    final cargas = cargasAsync.value ?? const <CargaCursoMateria>[];
+    final aulas = aulasAsync.valueOrNull ?? const <Aula>[];
+    final cargas = cargasAsync.valueOrNull ?? const <CargaCursoMateria>[];
     final aulasGeminadas =
-        aulasGeminadasAsync.value ?? const <AulaGeminadaCurso>[];
-    final materias = materiasAsync.value ?? const <Materia>[];
-    final professores = professoresAsync.value ?? const <Professor>[];
-    final ligacoes = ligacoesAsync.value ?? const <ProfessorMateria>[];
+        aulasGeminadasAsync.valueOrNull ?? const <AulaGeminadaCurso>[];
+    final materias = materiasAsync.valueOrNull ?? const <Materia>[];
+    final professores = professoresAsync.valueOrNull ?? const <Professor>[];
+    final ligacoes = ligacoesAsync.valueOrNull ?? const <ProfessorMateria>[];
     final indisponibilidades =
-        indisponibilidadesAsync.value ?? const <IndisponibilidadeProfessor>[];
-    final salas = salasAsync.value ?? const <Sala>[];
-    final cursos = cursosAsync.value ?? const <Curso>[];
+        indisponibilidadesAsync.valueOrNull ?? const <IndisponibilidadeProfessor>[];
+    final salas = salasAsync.valueOrNull ?? const <Sala>[];
+    final cursos = cursosAsync.valueOrNull ?? const <Curso>[];
 
     // Só permite gerar com todos os dados carregados (lista vazia por
     // carregamento faria o gerador apagar a grade sem recriá-la).
@@ -248,7 +266,7 @@ class _Page3State extends ConsumerState<Page3> {
                       aulasGeminadas: aulasGeminadas,
                       materias: materias,
                     ),
-              aoPdf: cursos.isEmpty
+              aoPdf: _ocupado || !dadosProntos || cursos.isEmpty
                   ? null
                   : () => _exportarPdf(
                       cursos: cursos,
@@ -276,7 +294,9 @@ class _Page3State extends ConsumerState<Page3> {
                 indisponibilidades: indisponibilidades,
                 salas: salas,
                 horarios: horarios,
-                ocupado: _ocupado,
+                // Tocar e arrastar só com todos os dados carregados (sem as
+                // indisponibilidades, o arraste aceitaria horário bloqueado).
+                ocupado: _ocupado || !dadosProntos,
                 aoSalvarHorario: (indicePeriodo, texto) =>
                     _salvarHorario(indicePeriodo, texto),
                 aoLimpar: _ocupado ? null : () => _limparCurso(selecionado),

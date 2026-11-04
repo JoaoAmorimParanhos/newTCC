@@ -1,5 +1,8 @@
--- Rode no SQL Editor do Supabase (uma vez).
+-- Rode no SQL Editor do Supabase (uma vez), ANTES dos outros scripts:
+--   1) supabase_aulas_geminadas.sql  2) supabase_noite_tipos_horarios.sql
+--   3) supabase_turnos_transacoes.sql
 -- Cadastra pares de matérias que podem acontecer ao mesmo tempo na mesma turma.
+-- Rodar de novo num banco atualizado é seguro: as partes antigas são puladas.
 
 alter table public.tb_curso
   add column if not exists turno_compartilhado boolean not null default false;
@@ -32,11 +35,23 @@ update public.tb_curso_aula_geminada
 alter table public.tb_curso_aula_geminada
   alter column quantidade_blocos set default 1,
   alter column quantidade_blocos set not null;
-alter table public.tb_curso_aula_geminada
-  drop constraint if exists tb_curso_aula_geminada_blocos_validos;
-alter table public.tb_curso_aula_geminada
-  add constraint tb_curso_aula_geminada_blocos_validos
-  check (quantidade_blocos >= 1 and quantidade_blocos <= quantidade_periodos);
+-- Só num banco que ainda não tem cargas diferentes por matéria
+-- (supabase_noite_tipos_horarios.sql troca esta regra por greatest(A, B)).
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'tb_curso_aula_geminada'
+      and column_name = 'quantidade_periodos_b'
+  ) then
+    alter table public.tb_curso_aula_geminada
+      drop constraint if exists tb_curso_aula_geminada_blocos_validos;
+    alter table public.tb_curso_aula_geminada
+      add constraint tb_curso_aula_geminada_blocos_validos
+      check (quantidade_blocos >= 1 and quantidade_blocos <= quantidade_periodos);
+  end if;
+end $$;
 
 -- Colunas usadas pelo app que não estavam neste script.
 -- "if not exists" deixa seguro rodar de novo num banco que já as tenha.
@@ -47,15 +62,18 @@ alter table public.tb_curso
 alter table public.tb_curso_materia
   add column if not exists tamanho_bloco integer not null default 1;
 
+-- Tipo de sala fixo (antigo): só num banco que ainda não tem tb_tipo_sala
+-- (supabase_noite_tipos_horarios.sql troca por tipos cadastráveis).
 do $$
 begin
-  if not exists (select 1 from pg_type where typname = 'tipo_sala') then
-    create type public.tipo_sala as enum ('sala_aula', 'laboratorio_informatica');
+  if to_regclass('public.tb_tipo_sala') is null then
+    if not exists (select 1 from pg_type where typname = 'tipo_sala') then
+      create type public.tipo_sala as enum ('sala_aula', 'laboratorio_informatica');
+    end if;
+    alter table public.tb_sala
+      add column if not exists tipo public.tipo_sala not null default 'sala_aula';
   end if;
 end $$;
-
-alter table public.tb_sala
-  add column if not exists tipo public.tipo_sala not null default 'sala_aula';
 
 alter table public.tb_aula
   add column if not exists grupo integer not null default 1

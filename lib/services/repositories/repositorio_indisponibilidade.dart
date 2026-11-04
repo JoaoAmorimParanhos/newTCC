@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'package:flutter_test_project/services/repositories/observar_tabela.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_test_project/components/grade_horaria.dart';
@@ -12,45 +12,8 @@ class RepositorioIndisponibilidade {
 
   static const String _table = 'tb_professor_indisponibilidade';
 
-  Stream<List<IndisponibilidadeProfessor>> observarTodos() {
-    final controller = StreamController<List<IndisponibilidadeProfessor>>();
-    var closed = false;
-
-    Future<void> emit() async {
-      try {
-        final data = await buscarTodos();
-        if (!closed && !controller.isClosed) {
-          controller.add(data);
-        }
-      } catch (error, stackTrace) {
-        if (!closed && !controller.isClosed) {
-          controller.addError(error, stackTrace);
-        }
-      }
-    }
-
-    final channel = _client
-        .channel('watch:$_table')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: _table,
-          callback: (_) => unawaited(emit()),
-        )
-        .subscribe();
-
-    unawaited(emit());
-
-    controller.onCancel = () async {
-      closed = true;
-      await _client.removeChannel(channel);
-      if (!controller.isClosed) {
-        await controller.close();
-      }
-    };
-
-    return controller.stream;
-  }
+  Stream<List<IndisponibilidadeProfessor>> observarTodos() =>
+      observarTabela(client: _client, tabela: _table, buscar: buscarTodos);
 
   Future<List<IndisponibilidadeProfessor>> buscarTodos() async {
     final data = await _client.from(_table).select();
@@ -84,16 +47,5 @@ class RepositorioIndisponibilidade {
         .eq('id_professor', int.parse(idProfessor))
         .eq('dia_semana', celula.indiceDia + 1)
         .eq('periodo', celula.indicePeriodo + 1);
-  }
-
-  Future<void> excluir(String id) async {
-    await _client.from(_table).delete().eq('id', int.parse(id));
-  }
-
-  Future<void> excluirPorProfessor(String idProfessor) async {
-    await _client
-        .from(_table)
-        .delete()
-        .eq('id_professor', int.parse(idProfessor));
   }
 }

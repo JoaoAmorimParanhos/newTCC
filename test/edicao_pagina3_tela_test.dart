@@ -222,7 +222,7 @@ void main() {
       );
 
       await _tocar(tester, _celula(0, 0));
-      await _tocar(tester, find.text('Adicionar 2º grupo'));
+      await _tocar(tester, find.text('Adicionar outro grupo'));
       expect(find.text('Nova aula — Seg 1º M · Grupo 2'), findsOneWidget);
       await _escolher(tester, 'subject-', 'Inglês');
       await _escolher(tester, 'prof-', 'Bruno');
@@ -245,7 +245,7 @@ void main() {
       );
 
       await _tocar(tester, _celula(0, 0));
-      await _tocar(tester, find.text('Adicionar 2º grupo'));
+      await _tocar(tester, find.text('Adicionar outro grupo'));
       await _tocar(tester, _porPrefixo('subject-'));
 
       expect(find.text('Inglês'), findsWidgets);
@@ -292,11 +292,13 @@ void main() {
       await _escolher(tester, 'prof-', 'Diego');
       await _tocar(tester, find.text('Salvar'));
 
+      // O diálogo fica aberto com o motivo: a escolha não se perde.
       expect(repo.aulas, hasLength(1));
       expect(
-        find.text('Erro: Carga completa para esta matéria (1 aula(s)).'),
+        find.text('Carga completa para esta matéria (1 aula(s)).'),
         findsOneWidget,
       );
+      expect(find.text('Salvar'), findsOneWidget);
     });
 
     testWidgets('não oferece professor ocupado em outra turma', (
@@ -611,11 +613,11 @@ void main() {
       );
     });
 
-    testWidgets('se salvar falhar, restaura a grade anterior', (tester) async {
+    testWidgets('se salvar falhar, a grade anterior continua', (tester) async {
       final repo = RepositorioAulaFalso([
         aula(dia: 0, periodo: 0, idMateria: matematica.id, idProfessor: carla.id),
         aula(dia: 1, periodo: 0, idMateria: matematica.id, idProfessor: carla.id),
-      ])..falhasAoAdicionarVarias = 1;
+      ])..falhasAoSubstituir = 1;
       await _abrirPagina3(
         tester,
         repo: repo,
@@ -629,7 +631,7 @@ void main() {
         repo.aulas.map((a) => '${a.indiceDia}-${a.indicePeriodo}').toSet(),
         {'0-0', '1-0'},
       );
-      expect(find.textContaining('grade anterior restaurada'), findsOneWidget);
+      expect(find.textContaining('grade anterior mantida'), findsOneWidget);
     });
 
     testWidgets('"Gerar" fica bloqueado enquanto os dados carregam', (

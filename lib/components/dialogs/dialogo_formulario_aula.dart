@@ -16,7 +16,7 @@ class ResultadoFormularioAula {
   final String? idSala;
 }
 
-/// Returned when the user confirms delete (only if [allowDelete]).
+/// Devolvido quando a pessoa confirma a exclusão (só com [permitirExcluir]).
 class ExclusaoFormularioAula {
   const ExclusaoFormularioAula();
 }
@@ -32,6 +32,10 @@ Future<Object?> mostrarDialogoFormularioAula(
   String? idSalaInicial,
   bool permitirExcluir = false,
   String? mensagemExclusao,
+
+  /// Confere a aula antes de fechar; devolve o motivo da recusa ou null.
+  /// Com recusa o diálogo fica aberto e mostra o motivo (nada se perde).
+  String? Function(ResultadoFormularioAula resultado)? validar,
 }) {
   return showDialog<Object>(
     context: context,
@@ -45,6 +49,7 @@ Future<Object?> mostrarDialogoFormularioAula(
       idSalaInicial: idSalaInicial,
       permitirExcluir: permitirExcluir,
       mensagemExclusao: mensagemExclusao,
+      validar: validar,
     ),
   );
 }
@@ -60,6 +65,7 @@ class _AulaFormDialog extends StatefulWidget {
     this.idSalaInicial,
     this.permitirExcluir = false,
     this.mensagemExclusao,
+    this.validar,
   });
 
   final String titulo;
@@ -71,6 +77,7 @@ class _AulaFormDialog extends StatefulWidget {
   final String? idSalaInicial;
   final bool permitirExcluir;
   final String? mensagemExclusao;
+  final String? Function(ResultadoFormularioAula resultado)? validar;
 
   @override
   State<_AulaFormDialog> createState() => _AulaFormDialogState();
@@ -126,13 +133,19 @@ class _AulaFormDialogState extends State<_AulaFormDialog> {
       setState(() => _erro = 'Selecione um professor disponível');
       return;
     }
-    Navigator.of(context).pop(
-      ResultadoFormularioAula(
-        idMateria: idMateria,
-        idProfessor: idProfessor,
-        idSala: _idSala,
-      ),
+    final resultado = ResultadoFormularioAula(
+      idMateria: idMateria,
+      idProfessor: idProfessor,
+      idSala: _idSala,
     );
+    // Ex.: professor atual ficou indisponível ou matéria saiu da carga:
+    // avisa aqui, sem fechar, para a pessoa corrigir sem perder a edição.
+    final recusa = widget.validar?.call(resultado);
+    if (recusa != null) {
+      setState(() => _erro = recusa);
+      return;
+    }
+    Navigator.of(context).pop(resultado);
   }
 
   Future<void> _confirmarExclusao() async {
@@ -167,6 +180,7 @@ class _AulaFormDialogState extends State<_AulaFormDialog> {
               const Text('Este curso não tem matérias na carga horária.')
             else ...[
               DropdownButtonFormField<String>(
+                isExpanded: true,
                 key: ValueKey('subject-$subjectValue'),
                 initialValue: subjectValue,
                 decoration: const InputDecoration(labelText: 'Matéria'),
@@ -174,7 +188,7 @@ class _AulaFormDialogState extends State<_AulaFormDialog> {
                     .map(
                       (s) => DropdownMenuItem(
                         value: s.id,
-                        child: Text(s.nome),
+                        child: Text(s.nome, overflow: TextOverflow.ellipsis),
                       ),
                     )
                     .toList(),
@@ -188,6 +202,7 @@ class _AulaFormDialogState extends State<_AulaFormDialog> {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
+                isExpanded: true,
                 key: ValueKey('prof-$_idMateria-$professorValue'),
                 initialValue: professorValue,
                 decoration: const InputDecoration(labelText: 'Professor'),
@@ -195,7 +210,7 @@ class _AulaFormDialogState extends State<_AulaFormDialog> {
                     .map(
                       (p) => DropdownMenuItem(
                         value: p.id,
-                        child: Text(p.nome),
+                        child: Text(p.nome, overflow: TextOverflow.ellipsis),
                       ),
                     )
                     .toList(),
@@ -213,11 +228,14 @@ class _AulaFormDialogState extends State<_AulaFormDialog> {
                   padding: EdgeInsets.only(top: 8),
                   child: Text(
                     'Nenhum professor disponível neste horário. '
-                    'Escolha outro professor ou ajuste a Página 2.',
+                    'Escolha outra matéria ou ajuste a Página 2.',
                     style: TextStyle(color: Colors.red),
                   ),
                 ),
+              // Só quando a matéria continua a mesma: trocar de matéria
+              // limpa o professor de propósito, não é indisponibilidade.
               if (widget.idProfessorInicial != null &&
+                  _idMateria == widget.idMateriaInicial &&
                   professorValue == null &&
                   professores.isNotEmpty)
                 const Padding(
@@ -230,6 +248,7 @@ class _AulaFormDialogState extends State<_AulaFormDialog> {
                 ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String?>(
+                isExpanded: true,
                 key: ValueKey('room-$roomValue'),
                 initialValue: roomValue,
                 decoration: const InputDecoration(
@@ -243,7 +262,10 @@ class _AulaFormDialogState extends State<_AulaFormDialog> {
                   ...widget.salas.map(
                     (room) => DropdownMenuItem<String?>(
                       value: room.id,
-                      child: Text(room.rotulo),
+                      child: Text(
+                        room.rotulo,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ),
                 ],

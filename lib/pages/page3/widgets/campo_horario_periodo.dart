@@ -15,7 +15,9 @@ class CampoHorarioPeriodo extends StatefulWidget {
 
   final String rotulo;
   final String texto;
-  final void Function(String texto)? aoSalvar;
+
+  /// Grava o texto; devolve false se não conseguiu (ex.: sem conexão).
+  final Future<bool> Function(String texto)? aoSalvar;
 
   @override
   State<CampoHorarioPeriodo> createState() => _CampoHorarioPeriodoState();
@@ -25,6 +27,10 @@ class _CampoHorarioPeriodoState extends State<CampoHorarioPeriodo> {
   late final _controlador = TextEditingController(text: widget.texto);
   final _foco = FocusNode();
   String? _erro;
+
+  /// Texto já enviado para salvar, enquanto o valor gravado
+  /// ([CampoHorarioPeriodo.texto]) ainda não chegou atualizado.
+  String? _enviado;
 
   @override
   void initState() {
@@ -37,10 +43,11 @@ class _CampoHorarioPeriodoState extends State<CampoHorarioPeriodo> {
   @override
   void didUpdateWidget(covariant CampoHorarioPeriodo antigo) {
     super.didUpdateWidget(antigo);
-    // Dados em tempo real atualizam o texto, mas nunca enquanto o
-    // usuário está digitando nele.
-    if (!_foco.hasFocus && antigo.texto != widget.texto) {
-      _controlador.text = widget.texto;
+    if (antigo.texto != widget.texto) {
+      _enviado = null;
+      // Dados novos atualizam o texto, mas nunca enquanto o usuário está
+      // digitando nele.
+      if (!_foco.hasFocus) _controlador.text = widget.texto;
     }
   }
 
@@ -51,11 +58,13 @@ class _CampoHorarioPeriodoState extends State<CampoHorarioPeriodo> {
     super.dispose();
   }
 
-  void _confirmar() {
+  Future<void> _confirmar() async {
+    if (!mounted) return;
     final texto = _controlador.text.trim();
-    // Sem mudança. Não limpa o erro: depois do Enter o campo perde o foco e
-    // passa por aqui de novo; o erro some quando a pessoa volta a digitar.
-    if (texto == widget.texto) return;
+    // Sem mudança, ou já enviado: depois do Enter o campo perde o foco e
+    // passa por aqui de novo, e não pode salvar duas vezes. Também não limpa
+    // o erro; ele some quando a pessoa volta a digitar.
+    if (texto == widget.texto || texto == _enviado) return;
     final erro = validarHorario(texto);
     if (erro != null) {
       // Não salva: volta ao horário que já estava gravado.
@@ -65,8 +74,17 @@ class _CampoHorarioPeriodoState extends State<CampoHorarioPeriodo> {
       });
       return;
     }
+    final aoSalvar = widget.aoSalvar;
+    if (aoSalvar == null) return;
     setState(() => _erro = null);
-    widget.aoSalvar?.call(texto);
+    _enviado = texto;
+    final salvou = await aoSalvar(texto);
+    if (!mounted || salvou) return;
+    // Não gravou (ex.: sem conexão): mostra de novo o que está gravado.
+    setState(() {
+      _enviado = null;
+      _controlador.text = widget.texto;
+    });
   }
 
   @override

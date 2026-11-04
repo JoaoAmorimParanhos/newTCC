@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'package:flutter_test_project/services/repositories/observar_tabela.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_test_project/model/materia/materia.dart';
@@ -12,48 +12,11 @@ class RepositorioMateria {
   static const String _table = 'tb_materia';
   static const String _linkTable = 'tb_professor_materia';
 
-  Stream<List<Materia>> observarTodos() {
-    final controller = StreamController<List<Materia>>();
-    var closed = false;
-
-    Future<void> emit() async {
-      try {
-        final data = await buscarTodos();
-        if (!closed && !controller.isClosed) {
-          controller.add(data);
-        }
-      } catch (error, stackTrace) {
-        if (!closed && !controller.isClosed) {
-          controller.addError(error, stackTrace);
-        }
-      }
-    }
-
-    final channel = _client
-        .channel('watch:$_table')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: _table,
-          callback: (_) => unawaited(emit()),
-        )
-        .subscribe();
-
-    unawaited(emit());
-
-    controller.onCancel = () async {
-      closed = true;
-      await _client.removeChannel(channel);
-      if (!controller.isClosed) {
-        await controller.close();
-      }
-    };
-
-    return controller.stream;
-  }
+  Stream<List<Materia>> observarTodos() =>
+      observarTabela(client: _client, tabela: _table, buscar: buscarTodos);
 
   Future<List<Materia>> buscarTodos() async {
-    final data = await _client.from(_table).select().order('nome');
+    final data = await _client.from(_table).select().order('id', ascending: true);
     return (data as List)
         .map((row) => Materia.fromJson(row as Map<String, dynamic>))
         .toList();
@@ -121,11 +84,8 @@ class RepositorioMateria {
         );
   }
 
+  /// Aulas, vínculos e o resto ligado a ele saem junto (cascata no banco).
   Future<void> excluir(String id) async {
-    final parsedId = int.parse(id);
-    await _client.from('tb_aula').delete().eq('id_materia', parsedId);
-    await _client.from('tb_curso_materia').delete().eq('id_materia', parsedId);
-    await _client.from(_linkTable).delete().eq('id_materia', parsedId);
-    await _client.from(_table).delete().eq('id', parsedId);
+    await _client.from(_table).delete().eq('id', int.parse(id));
   }
 }
