@@ -74,18 +74,6 @@ int? proximoGrupoLivre(List<Aula> aulasNaCelula, {String? idAulaExcluida}) {
   return null;
 }
 
-List<Materia> materiasDoCurso(
-  String idCurso,
-  List<CargaCursoMateria> cargas,
-  List<Materia> materias,
-) {
-  final ids = cargas
-      .where((l) => l.idCurso == idCurso)
-      .map((l) => l.idMateria)
-      .toSet();
-  return materias.where((m) => ids.contains(m.id)).toList();
-}
-
 bool estaIndisponivel(
   List<IndisponibilidadeProfessor> linhas,
   String idProfessor,
@@ -125,35 +113,6 @@ List<Professor> professoresDaMateriaNaCelula({
     );
     return !ocupado;
   }).toList();
-}
-
-int quantidadeAgendada(
-  List<Aula> aulas,
-  String idCurso,
-  String idMateria, {
-  String? idAulaExcluida,
-}) {
-  return aulas
-      .where(
-        (a) =>
-            a.idCurso == idCurso &&
-            a.idMateria == idMateria &&
-            a.id != idAulaExcluida,
-      )
-      .length;
-}
-
-int? cargaMaxima(
-  List<CargaCursoMateria> cargas,
-  String idCurso,
-  String idMateria,
-) {
-  for (final carga in cargas) {
-    if (carga.idCurso == idCurso && carga.idMateria == idMateria) {
-      return carga.quantidadeAulas;
-    }
-  }
-  return null;
 }
 
 String subtituloProgresso(
@@ -203,22 +162,10 @@ List<Professor> professoresParaDialogoAula({
   return disponiveis;
 }
 
-List<Materia> materiasParaDialogoAula({
-  required List<Materia> materiasCurso,
-  required List<Materia> todasMaterias,
-  Aula? existente,
-}) {
-  final lista = List<Materia>.from(materiasCurso);
-  if (existente != null && !lista.any((m) => m.id == existente.idMateria)) {
-    final orfao = todasMaterias.where((m) => m.id == existente.idMateria);
-    if (orfao.isNotEmpty) {
-      lista.add(orfao.first);
-    }
-  }
-  return lista;
-}
-
 /// Retorna mensagem de erro ou null se a aula pode ser salva.
+///
+/// A carga e os pares de aula geminada não bloqueiam: criar ou excluir na
+/// grade atualiza o cadastro do curso (ver `cadastro_da_grade.dart`).
 String? validarSalvarAula({
   required Curso curso,
   required CelulaGrade celula,
@@ -227,27 +174,10 @@ String? validarSalvarAula({
   required String? idSala,
   required Aula? existente,
   required int grupo,
-  required List<CargaCursoMateria> cargas,
-  required List<AulaGeminadaCurso> aulasGeminadas,
   required List<Aula> todasAulas,
   required List<ProfessorMateria> ligacoes,
   required List<IndisponibilidadeProfessor> indisponibilidades,
 }) {
-  final maximo = cargaMaxima(cargas, curso.id, idMateria);
-  if (maximo == null) {
-    return 'Matéria não pertence à carga deste curso.';
-  }
-
-  final jaAgendada = quantidadeAgendada(
-    todasAulas,
-    curso.id,
-    idMateria,
-    idAulaExcluida: existente?.id,
-  );
-  if (jaAgendada >= maximo) {
-    return 'Carga completa para esta matéria ($maximo aula(s)).';
-  }
-
   final vinculado = ligacoes.any(
     (l) => l.idProfessor == idProfessor && l.idMateria == idMateria,
   );
@@ -270,32 +200,19 @@ String? validarSalvarAula({
     return 'Este professor já está alocado neste horário.';
   }
 
-  final limiteGrupos = maxGruposDoCurso(curso, aulasGeminadas);
   final naCelula = aulasNaCelula(
     todasAulas,
     curso.id,
     celula,
   ).where((a) => a.id != existente?.id).toList();
-  if (naCelula.length >= limiteGrupos) {
-    if (limiteGrupos == 1) {
-      return 'Cadastre um par de aula geminada para usar 2 grupos.';
-    }
-    return 'Este horário já tem $limiteGrupos grupos nesta turma.';
+  if (naCelula.length >= maxGruposPorCelula) {
+    return 'Este horário já tem $maxGruposPorCelula grupos nesta turma.';
   }
   if (naCelula.any((a) => a.grupo == grupo)) {
     return 'O grupo $grupo já está ocupado neste horário.';
   }
   if (naCelula.any((a) => a.idMateria == idMateria)) {
     return 'Esta matéria já está neste horário (outro grupo).';
-  }
-  if (naCelula.isNotEmpty &&
-      !existeAulaGeminada(
-        idCurso: curso.id,
-        idMateriaA: naCelula.first.idMateria,
-        idMateriaB: idMateria,
-        aulasGeminadas: aulasGeminadas,
-      )) {
-    return 'Estas matérias não formam uma aula geminada nesta turma.';
   }
 
   // Sala: grupos da mesma turma podem dividir; outra turma conflita.

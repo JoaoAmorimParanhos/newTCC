@@ -122,3 +122,7 @@ List<IndisponibilidadeProfessor> diaInteiroIndisponivel(
 
 CelulaGrade celula(int dia, int periodo) =>
     CelulaGrade(indiceDia: dia, indicePeriodo: periodo);
+
+/// Professor que dá a matéria.
+ProfessorMateria ligacao(String idProfessor, String idMateria) =>
+    ProfessorMateria(idProfessor: idProfessor, idMateria: idMateria);

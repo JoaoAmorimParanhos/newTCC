@@ -14,7 +14,6 @@ import 'package:flutter_test_project/model/professor/professor_materia.dart';
 import 'package:flutter_test_project/model/sala/sala.dart';
 import 'package:flutter_test_project/pages/layout_base.dart';
 import 'package:flutter_test_project/pages/page3/helpers/acoes_horario.dart';
-import 'package:flutter_test_project/pages/page3/helpers/regras_horario.dart';
 import 'package:flutter_test_project/pages/page3/widgets/barra_acoes_horario.dart';
 import 'package:flutter_test_project/pages/page3/widgets/lista_cursos_horario.dart';
 import 'package:flutter_test_project/pages/page3/widgets/painel_grade_curso.dart';
@@ -157,7 +156,6 @@ class _Page3State extends ConsumerState<Page3> {
         iniciarGravacao: iniciarGravacao,
         celula: celula,
         curso: curso,
-        materiasCurso: materiasDoCurso(curso.id, cargas, materias),
         todasMaterias: materias,
         professores: professores,
         ligacoes: ligacoes,

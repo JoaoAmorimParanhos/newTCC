@@ -143,6 +143,7 @@ void main() {
       await _abrirPagina3(tester, repo: repo);
 
       await _tocar(tester, _celula(0, 0));
+      await _tocar(tester, find.text('Editar este grupo'));
       expect(find.text('Editar — Seg 1º M · Grupo 1'), findsOneWidget);
       await _escolher(tester, 'prof-', 'Diego');
       await _escolher(tester, 'room-', 'Laboratório de informática 1');
@@ -167,6 +168,7 @@ void main() {
       await _abrirPagina3(tester, repo: repo);
 
       await _tocar(tester, _celula(0, 0));
+      await _tocar(tester, find.text('Editar este grupo'));
       await _escolher(tester, 'subject-', 'Informática');
       await _escolher(tester, 'prof-', 'Ana');
       await _tocar(tester, find.text('Salvar'));
@@ -188,6 +190,7 @@ void main() {
       await _abrirPagina3(tester, repo: repo);
 
       await _tocar(tester, _celula(0, 0));
+      await _tocar(tester, find.text('Editar este grupo'));
       await _tocar(tester, find.text('Excluir'));
       await _tocar(tester, find.widgetWithText(FilledButton, 'Excluir'));
 
@@ -234,7 +237,7 @@ void main() {
       expect(nova.grupo, 2);
     });
 
-    testWidgets('no 2º grupo só aparece a matéria do par', (tester) async {
+    testWidgets('no outro grupo aparecem todas as matérias', (tester) async {
       final repo = RepositorioAulaFalso([
         aula(dia: 0, periodo: 0, idMateria: informatica.id, idProfessor: ana.id),
       ]);
@@ -249,7 +252,7 @@ void main() {
       await _tocar(tester, _porPrefixo('subject-'));
 
       expect(find.text('Inglês'), findsWidgets);
-      expect(find.text('Matemática'), findsNothing);
+      expect(find.text('Matemática'), findsWidgets);
     });
 
     testWidgets('com 2 grupos, pergunta qual editar', (tester) async {
@@ -275,7 +278,7 @@ void main() {
       expect(find.text('Editar — Seg 1º M · Grupo 2'), findsOneWidget);
     });
 
-    testWidgets('bloqueia salvar quando a carga já está completa', (
+    testWidgets('carga completa: a aula é criada e a carga sobe', (
       tester,
     ) async {
       final repo = RepositorioAulaFalso([
@@ -292,13 +295,9 @@ void main() {
       await _escolher(tester, 'prof-', 'Diego');
       await _tocar(tester, find.text('Salvar'));
 
-      // O diálogo fica aberto com o motivo: a escolha não se perde.
-      expect(repo.aulas, hasLength(1));
-      expect(
-        find.text('Carga completa para esta matéria (1 aula(s)).'),
-        findsOneWidget,
-      );
-      expect(find.text('Salvar'), findsOneWidget);
+      expect(repo.aulas, hasLength(2));
+      final cargaMatematica = repo.ultimoCadastro!.cargaDe(matematica.id)!;
+      expect(cargaMatematica.quantidadeAulas, 2);
     });
 
     testWidgets('não oferece professor ocupado em outra turma', (

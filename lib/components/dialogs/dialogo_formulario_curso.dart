@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_test_project/components/dialogs/dialogo_ajuda_bloco.dart';
 import 'package:flutter_test_project/model/curso/aula_geminada_curso.dart';
 import 'package:flutter_test_project/model/curso/preferencia_periodo.dart';
 import 'package:flutter_test_project/model/curso/carga_curso_materia.dart';
@@ -603,8 +604,8 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
                               },
                             ),
                           ),
-                          // Mesmo espaço do botão de remover da linha de cima.
-                          const SizedBox(width: 48),
+                          // No lugar do botão de remover da linha de cima.
+                          const BotaoAjudaBlocosGeminada(),
                         ],
                       ),
                     ],
@@ -787,6 +788,7 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
                                     },
                                   ),
                                 ),
+                                const BotaoAjudaBloco(),
                                 IconButton(
                                   onPressed: () => _removerLinha(i),
                                   tooltip: 'Remover linha',

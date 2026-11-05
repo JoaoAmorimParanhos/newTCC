@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_test_project/model/aula/aula.dart';
+import 'package:flutter_test_project/pages/page3/helpers/cadastro_da_grade.dart';
 import 'package:flutter_test_project/services/repositories/observar_tabela.dart';
 
 class RepositorioAula {
@@ -36,6 +37,39 @@ class RepositorioAula {
       'substituir_aulas',
       params: {'novas': aulas.map((aula) => aula.toInsertJson()).toList()},
     );
+  }
+
+  /// Grava uma mudança na grade junto com o cadastro do curso (carga e
+  /// pares de aula geminada), numa transação só (função
+  /// `salvar_aula_e_cadastro` no banco): se falhar, nada muda.
+  ///
+  /// Exclui [excluir], grava [atualizar] (matéria, professor, sala, grupo),
+  /// insere [inserir] e troca a carga e os pares pelo [cadastro]. Devolve o
+  /// id da aula inserida.
+  Future<String?> salvarComCadastro({
+    required String idCurso,
+    required CadastroCurso cadastro,
+    Aula? inserir,
+    List<Aula> atualizar = const [],
+    List<String> excluir = const [],
+  }) async {
+    final id = await _client.rpc(
+      'salvar_aula_e_cadastro',
+      params: {
+        'p_id_curso': int.parse(idCurso),
+        'p_inserir': inserir?.toInsertJson(),
+        'p_atualizar': [
+          for (final a in atualizar)
+            {'id': int.parse(a.id), ...a.toInsertJson()},
+        ],
+        'p_excluir': [for (final id in excluir) int.parse(id)],
+        'p_cargas': [for (final c in cadastro.cargas) c.toInsertJson()],
+        'p_pares': [
+          for (final p in cadastro.pares) p.toInsertJson(idCursoOverride: idCurso),
+        ],
+      },
+    );
+    return id?.toString();
   }
 
   /// Ordem segura para gravar um conjunto deslocado: descendo, de baixo
