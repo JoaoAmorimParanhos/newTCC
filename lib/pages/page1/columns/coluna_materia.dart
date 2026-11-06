@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test_project/components/coluna_quadro.dart';
+import 'package:flutter_test_project/services/texto.dart';
 import 'package:flutter_test_project/components/dialogs/dialogo_confirmar_exclusao.dart';
 import 'package:flutter_test_project/components/dialogs/dialogo_formulario_materia.dart';
 import 'package:flutter_test_project/components/cartao_item.dart';
@@ -19,7 +20,7 @@ class ColunaMateria extends ConsumerWidget {
   Future<void> _criar(BuildContext context, WidgetRef ref) async {
     final result = await mostrarDialogoFormularioMateria(
       context,
-      titulo: 'Nova matéria',
+      titulo: 'Novo componente',
       professores: _professoresOuVazio(ref),
     );
     if (result == null) return;
@@ -63,7 +64,7 @@ class ColunaMateria extends ConsumerWidget {
 
     final result = await mostrarDialogoFormularioMateria(
       context,
-      titulo: 'Editar matéria',
+      titulo: 'Editar componente',
       professores: _professoresOuVazio(ref),
       nomeInicial: subject.nome,
       idsProfessoresIniciais: idsAtuais,
@@ -90,7 +91,7 @@ class ColunaMateria extends ConsumerWidget {
   ) async {
     final confirmed = await mostrarDialogoConfirmarExclusao(
       context,
-      titulo: 'Excluir matéria',
+      titulo: 'Excluir componente',
       mensagem:
           'Excluir "${subject.nome}"? Também remove das cargas dos cursos, '
           'vínculos com professores e aulas na grade.',
@@ -128,21 +129,25 @@ class ColunaMateria extends ConsumerWidget {
     final ligacoes = ref.watch(provedorProfessorMaterias).valueOrNull ?? const [];
 
     return ColunaQuadro(
-      titulo: 'Matérias',
+      titulo: 'Componentes',
       icone: Icons.menu_book_outlined,
       acoes: [
         IconButton(
           onPressed: () => _criar(context, ref),
-          tooltip: 'Adicionar matéria',
+          tooltip: 'Adicionar componente',
           icon: const Icon(Icons.add_circle_outline, color: Colors.white),
           visualDensity: VisualDensity.compact,
         ),
       ],
-      child: subjectsAsync.when(
-        data: (materias) {
-          if (materias.isEmpty) {
-            return const DicaColunaVazia(mensagem: 'Nenhuma matéria cadastrada');
+      construirComBusca: (busca) => subjectsAsync.when(
+        data: (todas) {
+          if (todas.isEmpty) {
+            return const DicaColunaVazia(mensagem: 'Nenhum componente cadastrado');
           }
+          final materias = todas
+              .where((m) => correspondeBusca(m.nome, busca))
+              .toList();
+          if (materias.isEmpty) return DicaBuscaVazia(busca: busca);
           return ListView(
             padding: const EdgeInsets.symmetric(vertical: 8),
             children: materias.map((subject) {

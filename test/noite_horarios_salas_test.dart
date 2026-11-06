@@ -338,7 +338,7 @@ void main() {
       expect(repo.salvos, isEmpty);
     });
 
-    testWidgets('horários que não fazem sentido entre si são aceitos', (
+    testWidgets('fim antes do início não é salvo', (
       tester,
     ) async {
       final repo = _RepositorioHorarioFalso();
@@ -346,10 +346,11 @@ void main() {
       await tester.tap(find.text('Info 1'));
       await tester.pump(const Duration(milliseconds: 300));
 
-      // Termina antes de começar: o formato está certo, então salva.
+      // Termina antes de começar: não salva.
       await digitarEConfirmar(tester, 6, '08000750');
 
-      expect(repo.salvos[6], '08:00 - 07:50');
+      expect(repo.salvos.containsKey(6), isFalse);
+      expect(find.text('O fim deve ser depois do início'), findsOneWidget);
     });
 
     testWidgets('apagar o campo apaga o horário', (tester) async {

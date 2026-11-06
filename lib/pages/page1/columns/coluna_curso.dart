@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test_project/components/coluna_quadro.dart';
+import 'package:flutter_test_project/services/texto.dart';
 import 'package:flutter_test_project/components/dialogs/dialogo_confirmar_exclusao.dart';
 import 'package:flutter_test_project/components/dialogs/dialogo_formulario_curso.dart';
 import 'package:flutter_test_project/components/cartao_item.dart';
@@ -11,6 +12,7 @@ import 'package:flutter_test_project/model/sala/sala.dart';
 import 'package:flutter_test_project/model/materia/materia.dart';
 import 'package:flutter_test_project/providers/providers.dart';
 import 'package:flutter_test_project/services/arrumacao_grupos.dart';
+import 'package:flutter_test_project/services/impacto_edicao_curso.dart';
 
 class ColunaCurso extends ConsumerWidget {
   const ColunaCurso({super.key});
@@ -83,6 +85,26 @@ class ColunaCurso extends ConsumerWidget {
       cargasIniciais: cargas,
       aulasGeminadasIniciais: aulasGeminadas,
       idCurso: course.id,
+      // Antes de fechar: avisa se a edição apaga aulas da grade (componente
+      // tirado da carga) ou deixa aulas fora do novo turno.
+      confirmarAntesDeSalvar: (r) async {
+        final impacto = impactoEdicaoCurso(
+          idCurso: course.id,
+          turnoAntigo: course.preferenciaPeriodo,
+          turnoNovo: r.preferenciaPeriodo,
+          cargasNovas: r.cargas,
+          aulas: ref.read(provedorAulas).valueOrNull ?? const [],
+          nomesComponentes: {for (final m in materias) m.id: m.nome},
+        );
+        final mensagem = impacto.mensagem;
+        if (mensagem == null || !context.mounted) return true;
+        return mostrarDialogoConfirmarExclusao(
+          context,
+          titulo: 'Salvar curso?',
+          mensagem: mensagem,
+          rotuloConfirmar: 'Salvar',
+        );
+      },
     );
     if (result == null) return;
 
@@ -94,6 +116,7 @@ class ColunaCurso extends ConsumerWidget {
           idSala: result.idSala,
           preferenciaPeriodo: result.preferenciaPeriodo,
         ),
+        anterior: course,
         cargas: result.cargas,
         aulasGeminadas: result.aulasGeminadas,
       );
@@ -165,11 +188,15 @@ class ColunaCurso extends ConsumerWidget {
           visualDensity: VisualDensity.compact,
         ),
       ],
-      child: coursesAsync.when(
-        data: (cursos) {
-          if (cursos.isEmpty) {
+      construirComBusca: (busca) => coursesAsync.when(
+        data: (todos) {
+          if (todos.isEmpty) {
             return const DicaColunaVazia(mensagem: 'Nenhum curso cadastrado');
           }
+          final cursos = todos
+              .where((c) => correspondeBusca(c.nome, busca))
+              .toList();
+          if (cursos.isEmpty) return DicaBuscaVazia(busca: busca);
 
           final cargas = loadsAsync.valueOrNull ?? const [];
           final aulasGeminadas =
@@ -194,11 +221,12 @@ class ColunaCurso extends ConsumerWidget {
 
               final parts = <String>[
                 course.preferenciaPeriodo.rotulo,
-                if (geminatedCount > 0) '$geminatedCount aula(s) geminada(s)',
+                if (geminatedCount > 0) '$geminatedCount aula(s) dividida(s)',
                 if (materiaCount == 0)
-                  'Sem matérias'
+                  'Sem componentes'
                 else
-                  '$materiaCount matérias · $totalAulas aulas',
+                  '$materiaCount ${materiaCount == 1 ? 'componente' : 'componentes'}'
+                      ' · $totalAulas ${totalAulas == 1 ? 'aula' : 'aulas'}',
                 if (room != null) room.rotulo,
               ];
 

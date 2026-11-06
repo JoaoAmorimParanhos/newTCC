@@ -144,9 +144,10 @@ void main() {
       expect(r.falhas.single, contains('nenhum professor vinculado'));
     });
 
-    test('avisa quando o curso não tem carga', () {
+    test('curso sem carga não gera aulas nem conta como falha', () {
       final r = _gerar(cargas: const []);
-      expect(r.falhas.single, contains('sem carga'));
+      expect(r.novasAulas, isEmpty);
+      expect(r.falhas, isEmpty);
     });
 
     test('o horário gerado passa no validador da página 3', () {

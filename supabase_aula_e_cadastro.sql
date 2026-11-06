@@ -1,3 +1,8 @@
+-- SEM USO: a Página 3 voltou a não mexer na carga nem nos pares, e o app
+-- não chama mais esta função. Não precisa rodar. Para apagá-la do banco:
+--   drop function if exists public.salvar_aula_e_cadastro(bigint, jsonb, jsonb, jsonb, jsonb, jsonb);
+-- (confira a assinatura em Database > Functions antes de rodar).
+--
 -- Rode no SQL Editor do Supabase depois de supabase_turnos_transacoes.sql.
 -- Criar, editar ou excluir uma aula na Página 3 também muda a carga e os
 -- pares de aula geminada do curso (Página 1). Esta função faz tudo numa

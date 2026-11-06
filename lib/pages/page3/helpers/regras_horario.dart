@@ -115,6 +115,75 @@ List<Professor> professoresDaMateriaNaCelula({
   }).toList();
 }
 
+/// Aviso para o professor escolhido no diálogo de aula, ou null se ele
+/// pode dar a aula neste horário. Serve para o professor atual de uma aula
+/// que ficou bloqueado depois (Página 2 ou outra turma).
+String? avisoProfessorNaCelula({
+  required String idProfessor,
+  required CelulaGrade celula,
+  required List<IndisponibilidadeProfessor> indisponibilidades,
+  required List<Aula> todasAulas,
+  String? idAulaExcluida,
+}) {
+  if (estaIndisponivel(indisponibilidades, idProfessor, celula)) {
+    return 'O professor atual está indisponível neste horário (Disponibilidade). '
+        'Selecione outro para salvar.';
+  }
+  final ocupado = todasAulas.any(
+    (a) =>
+        a.id != idAulaExcluida &&
+        a.idProfessor == idProfessor &&
+        a.indiceDia == celula.indiceDia &&
+        a.indicePeriodo == celula.indicePeriodo,
+  );
+  if (ocupado) {
+    return 'O professor atual já está em outra aula neste horário. '
+        'Selecione outro para salvar.';
+  }
+  return null;
+}
+
+/// Grupo com que a aula é gravada ao salvar o diálogo.
+///
+/// Uma aula sozinha no grupo 2 ("G1 livre") só continua no grupo 2 se o
+/// componente ainda faz parte de uma aula dividida do curso; senão vira
+/// aula comum (grupo 1).
+int grupoAoSalvar({
+  required String idCurso,
+  required String idMateria,
+  required int grupoAtual,
+  required List<Aula> outrasNaCelula,
+  required List<AulaGeminadaCurso> aulasGeminadas,
+}) {
+  if (grupoAtual != 2 || outrasNaCelula.isNotEmpty) return grupoAtual;
+  final temPar = materiasGeminadasCom(
+    idCurso: idCurso,
+    idMateria: idMateria,
+    aulasGeminadas: aulasGeminadas,
+  ).isNotEmpty;
+  return temPar ? 2 : 1;
+}
+
+/// Grupo da aula que sobra na célula depois de excluir [excluida].
+///
+/// Se as duas formavam uma aula dividida cadastrada, a que sobra fica no
+/// grupo 2 (G1 livre). Se não formam mais par (o par saiu da Página 1),
+/// a que sobra vira aula comum (grupo 1).
+int grupoDaQueSobra({
+  required String idCurso,
+  required Aula excluida,
+  required Aula restante,
+  required List<AulaGeminadaCurso> aulasGeminadas,
+}) {
+  final formamPar = existeAulaGeminada(
+    idCurso: idCurso,
+    idMateriaA: excluida.idMateria,
+    idMateriaB: restante.idMateria,
+    aulasGeminadas: aulasGeminadas,
+  );
+  return formamPar ? 2 : 1;
+}
+
 String subtituloProgresso(
   Curso curso,
   List<CargaCursoMateria> cargas,
@@ -162,10 +231,67 @@ List<Professor> professoresParaDialogoAula({
   return disponiveis;
 }
 
+/// Componentes da carga do curso (os que a Página 3 oferece numa aula nova).
+List<Materia> materiasDoCurso(
+  String idCurso,
+  List<CargaCursoMateria> cargas,
+  List<Materia> materias,
+) {
+  final ids = {
+    for (final c in cargas.where((c) => c.idCurso == idCurso)) c.idMateria,
+  };
+  return materias.where((m) => ids.contains(m.id)).toList();
+}
+
+/// Lista do diálogo de aula: os componentes da carga e, ao editar, o
+/// componente atual mesmo que tenha saído da carga.
+List<Materia> materiasParaDialogoAula({
+  required List<Materia> materiasCurso,
+  required List<Materia> todasMaterias,
+  Aula? existente,
+}) {
+  final lista = List<Materia>.from(materiasCurso);
+  if (existente != null && !lista.any((m) => m.id == existente.idMateria)) {
+    final atual = todasMaterias.where((m) => m.id == existente.idMateria);
+    if (atual.isNotEmpty) lista.add(atual.first);
+  }
+  return lista;
+}
+
+/// Aulas do componente já marcadas na grade da turma.
+int quantidadeAgendada(
+  List<Aula> aulas,
+  String idCurso,
+  String idMateria, {
+  String? idAulaExcluida,
+}) => aulas
+    .where(
+      (a) =>
+          a.idCurso == idCurso &&
+          a.idMateria == idMateria &&
+          a.id != idAulaExcluida,
+    )
+    .length;
+
+/// Carga do componente no curso, ou null se não está na carga.
+int? cargaMaxima(
+  List<CargaCursoMateria> cargas,
+  String idCurso,
+  String idMateria,
+) {
+  for (final carga in cargas) {
+    if (carga.idCurso == idCurso && carga.idMateria == idMateria) {
+      return carga.quantidadeAulas;
+    }
+  }
+  return null;
+}
+
 /// Retorna mensagem de erro ou null se a aula pode ser salva.
 ///
-/// A carga e os pares de aula geminada não bloqueiam: criar ou excluir na
-/// grade atualiza o cadastro do curso (ver `cadastro_da_grade.dart`).
+/// A Página 3 só usa o que está cadastrado na Página 1: o componente
+/// precisa estar na carga (e ainda faltar aula dele), e dois grupos no
+/// mesmo horário precisam formar um par de aula dividida.
 String? validarSalvarAula({
   required Curso curso,
   required CelulaGrade celula,
@@ -174,19 +300,41 @@ String? validarSalvarAula({
   required String? idSala,
   required Aula? existente,
   required int grupo,
+  required List<CargaCursoMateria> cargas,
+  required List<AulaGeminadaCurso> aulasGeminadas,
   required List<Aula> todasAulas,
   required List<ProfessorMateria> ligacoes,
   required List<IndisponibilidadeProfessor> indisponibilidades,
 }) {
+  // A carga só conta quando entra uma aula nova do componente (aula nova
+  // ou troca de componente). Editar professor/sala de uma aula que já
+  // existe não aumenta nada, mesmo que a carga tenha diminuído depois.
+  final mudaComponente = existente == null || existente.idMateria != idMateria;
+  if (mudaComponente) {
+    final maximo = cargaMaxima(cargas, curso.id, idMateria);
+    if (maximo == null) {
+      return 'Este componente não está na carga do curso (Cadastros).';
+    }
+    final jaAgendada = quantidadeAgendada(
+      todasAulas,
+      curso.id,
+      idMateria,
+      idAulaExcluida: existente?.id,
+    );
+    if (jaAgendada >= maximo) {
+      return 'Carga completa para este componente ($maximo aula(s)).';
+    }
+  }
+
   final vinculado = ligacoes.any(
     (l) => l.idProfessor == idProfessor && l.idMateria == idMateria,
   );
   if (!vinculado) {
-    return 'Este professor não está vinculado a esta matéria.';
+    return 'Este professor não está vinculado a este componente.';
   }
 
   if (estaIndisponivel(indisponibilidades, idProfessor, celula)) {
-    return 'Professor indisponível neste horário (Página 2).';
+    return 'Professor indisponível neste horário (Disponibilidade).';
   }
 
   final professorOcupado = todasAulas.any(
@@ -212,7 +360,17 @@ String? validarSalvarAula({
     return 'O grupo $grupo já está ocupado neste horário.';
   }
   if (naCelula.any((a) => a.idMateria == idMateria)) {
-    return 'Esta matéria já está neste horário (outro grupo).';
+    return 'Este componente já está neste horário (outro grupo).';
+  }
+  if (naCelula.isNotEmpty &&
+      !existeAulaGeminada(
+        idCurso: curso.id,
+        idMateriaA: naCelula.first.idMateria,
+        idMateriaB: idMateria,
+        aulasGeminadas: aulasGeminadas,
+      )) {
+    return 'Estes componentes não formam uma aula dividida nesta turma '
+        '(Cadastros).';
   }
 
   // Sala: grupos da mesma turma podem dividir; outra turma conflita.
@@ -343,6 +501,66 @@ String rotuloCelula(CelulaGrade c) {
 
 /// Retorna o motivo para recusar soltar as [movidas] (já na posição nova),
 /// ou null se pode mover.
+/// Aula com que [aula] troca de lugar ao ser solta em [destino], ou null
+/// se não é caso de troca.
+///
+/// Só troca duas aulas comuns: cada uma sozinha na sua célula (turma
+/// inteira, grupo 1) e fora de qualquer conjunto de aula dividida.
+/// Aula dividida continua precisando de horários vazios.
+Aula? aulaParaTrocar({
+  required Aula aula,
+  required CelulaGrade destino,
+  required List<Aula> todasAulas,
+  required List<AulaGeminadaCurso> aulasGeminadas,
+}) {
+  if (aula.celula == destino) return null;
+  final naOrigem = aulasNaCelula(todasAulas, aula.idCurso, aula.celula);
+  final noDestino = aulasNaCelula(todasAulas, aula.idCurso, destino);
+  if (naOrigem.length != 1 || noDestino.length != 1) return null;
+  final outra = noDestino.single;
+  if (naOrigem.single.id != aula.id) return null;
+  if (aula.grupo != 1 || outra.grupo != 1) return null;
+  bool sozinha(Aula a) =>
+      aulasQueMovemJunto(
+        aula: a,
+        todasAulas: todasAulas,
+        aulasGeminadas: aulasGeminadas,
+      ).length ==
+      1;
+  if (!sozinha(aula) || !sozinha(outra)) return null;
+  return outra;
+}
+
+/// As duas aulas na posição uma da outra (para gravar a troca).
+(Aula, Aula) aulasTrocadas(Aula a, Aula b) => (
+  deslocarAulas([a], origem: a.celula, destino: b.celula).single,
+  deslocarAulas([b], origem: b.celula, destino: a.celula).single,
+);
+
+/// Motivo para não trocar [a] e [b] de lugar, ou null se pode: cada uma
+/// precisa caber no lugar da outra (professor livre e disponível, sala
+/// livre). Pode trocar entre turnos diferentes.
+String? validarTrocaAulas({
+  required Aula a,
+  required Aula b,
+  required List<Aula> todasAulas,
+  required List<Professor> professores,
+  required List<IndisponibilidadeProfessor> indisponibilidades,
+}) {
+  final (aNoLugarDeB, bNoLugarDeA) = aulasTrocadas(a, b);
+  for (final movida in [aNoLugarDeB, bNoLugarDeA]) {
+    final motivo = validarMoverAulas(
+      originais: [a, b],
+      movidas: [movida],
+      todasAulas: todasAulas,
+      professores: professores,
+      indisponibilidades: indisponibilidades,
+    );
+    if (motivo != null) return 'Não dá para trocar: $motivo';
+  }
+  return null;
+}
+
 String? validarMoverAulas({
   required List<Aula> originais,
   required List<Aula> movidas,
@@ -371,7 +589,7 @@ String? validarMoverAulas({
         ),
       );
   if (!mesmoTurno) {
-    return 'Não cabe aqui: a aula geminada precisa de $horarios horário(s) '
+    return 'Não cabe aqui: a aula dividida precisa de $horarios horário(s) '
         'seguidos no mesmo turno.';
   }
 
@@ -387,12 +605,12 @@ String? validarMoverAulas({
     final daTurma = outras.where((a) => a.idCurso == nova.idCurso).toList();
     if (turmaDivididaComGrupoLivre(daTurma)) {
       return 'Horário dividido: em ${rotuloCelula(celula)} a turma está em 2 '
-          'grupos e o grupo 1 fica livre (aula geminada). Não dá para '
+          'grupos e o grupo 1 fica livre (aula dividida). Não dá para '
           'soltar aula aqui.';
     }
     if (daTurma.isNotEmpty) {
       return ehConjunto
-          ? 'Horário ocupado: a aula geminada precisa de $horarios '
+          ? 'Horário ocupado: a aula dividida precisa de $horarios '
                 'horário(s) vazios seguidos (${rotuloCelula(celula)} já tem aula).'
           : 'Horário ocupado: solte a aula numa célula vazia '
                 '(${rotuloCelula(celula)} já tem aula).';
@@ -404,7 +622,7 @@ String? validarMoverAulas({
     }
     if (estaIndisponivel(indisponibilidades, nova.idProfessor, celula)) {
       return '$nomeProfessor está indisponível em ${rotuloCelula(celula)} '
-          '(Página 2).';
+          '(Disponibilidade).';
     }
     final idSala = nova.idSala;
     if (idSala != null && outras.any((a) => a.idSala == idSala)) {

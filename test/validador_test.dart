@@ -118,7 +118,7 @@ void main() {
       expect(p, contains('Sala de aula 1 ocupada por Info 2 (Seg 1º M)'));
     });
 
-    test('avisa 2 grupos no mesmo horário sem aula geminada', () {
+    test('avisa 2 grupos no mesmo horário sem aula dividida', () {
       final p = _problemas(
         cargas: [carga(informatica.id, 1), carga(ingles.id, 1)],
         aulas: [
@@ -132,7 +132,7 @@ void main() {
           ),
         ],
       );
-      expect(p, contains('2 grupos em Seg 1º M sem aula geminada'));
+      expect(p, contains('2 grupos em Seg 1º M sem aula dividida'));
     });
 
     test('avisa par de matérias que não é o geminado', () {
@@ -154,7 +154,7 @@ void main() {
           ),
         ],
       );
-      expect(p, contains('Par não geminado em Seg 1º M'));
+      expect(p, contains('Par sem aula dividida cadastrada em Seg 1º M'));
     });
 
     test('avisa quando as aulas juntas não batem com o configurado', () {
@@ -184,7 +184,7 @@ void main() {
           aula(dia: 2, periodo: 1, idMateria: ingles.id, idProfessor: bruno.id),
         ],
       );
-      expect(p, ['Aula geminada Informática + Inglês: 2/4 aulas juntas']);
+      expect(p, ['Aula dividida Informática + Inglês: 2/4 aulas juntas']);
     });
   });
 }

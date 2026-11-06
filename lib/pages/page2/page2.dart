@@ -84,7 +84,7 @@ class _Page2State extends ConsumerState<Page2> {
     }
 
     return LayoutBase(
-      titulo: 'Página 2',
+      titulo: 'Disponibilidade',
       body: Padding(
         padding: const EdgeInsets.all(8),
         child: Row(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test_project/components/coluna_quadro.dart';
+import 'package:flutter_test_project/services/texto.dart';
 import 'package:flutter_test_project/components/dialogs/dialogo_confirmar_exclusao.dart';
 import 'package:flutter_test_project/components/dialogs/dialogo_numero.dart';
 import 'package:flutter_test_project/components/cartao_item.dart';
@@ -122,11 +123,15 @@ class ColunaSala extends ConsumerWidget {
           visualDensity: VisualDensity.compact,
         ),
       ],
-      child: roomsAsync.when(
-        data: (salas) {
-          if (salas.isEmpty) {
+      construirComBusca: (busca) => roomsAsync.when(
+        data: (todas) {
+          if (todas.isEmpty) {
             return const DicaColunaVazia(mensagem: 'Nenhuma sala cadastrada');
           }
+          final salas = todas
+              .where((s) => correspondeBusca(s.rotulo, busca))
+              .toList();
+          if (salas.isEmpty) return DicaBuscaVazia(busca: busca);
           return ListView(
             padding: const EdgeInsets.symmetric(vertical: 8),
             children: salas

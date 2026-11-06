@@ -14,7 +14,6 @@ import 'package:flutter_test_project/model/professor/indisponibilidade_professor
 import 'package:flutter_test_project/model/professor/professor.dart';
 import 'package:flutter_test_project/model/professor/professor_materia.dart';
 import 'package:flutter_test_project/model/sala/sala.dart';
-import 'package:flutter_test_project/pages/page3/helpers/cadastro_da_grade.dart';
 import 'package:flutter_test_project/pages/page3/helpers/regras_horario.dart';
 import 'package:flutter_test_project/providers/providers.dart';
 import 'package:flutter_test_project/services/gerador_horario.dart';
@@ -73,8 +72,8 @@ class AcoesHorario {
       mensagem:
           'Regenerar os horários de todas as turmas? '
           'Isso apaga os horários atuais e recria com base nas '
-          'configurações da Página 1 e nas indisponibilidades da '
-          'Página 2. Esta ação não pode ser desfeita.',
+          'configurações de Cadastros e na Disponibilidade dos '
+          'professores. Esta ação não pode ser desfeita.',
       rotuloConfirmar: 'Gerar',
     );
     if (!confirmado) return null;
@@ -118,6 +117,12 @@ class AcoesHorario {
         '${resultado.falhas.take(3).join(' ')}';
   }
 
+  /// Toque numa célula da grade: célula vazia cria uma aula; com uma aula,
+  /// edita essa aula; com dois grupos, pergunta qual editar.
+  ///
+  /// A Página 3 não muda a carga nem os pares de aula dividida: só usa o
+  /// que está cadastrado na Página 1. Excluir uma aula deixa a falta
+  /// aparecer no painel ("Faltam X aula(s)").
   Future<String?> aoTocarCelula({
     required BuildContext context,
     required VoidCallback iniciarGravacao,
@@ -136,46 +141,38 @@ class AcoesHorario {
     final mapaMaterias = materiaPorId(todasMaterias);
 
     Aula? existente;
-    var grupo = 1;
-
     if (naCelula.length == 1) {
-      // Qualquer aula sozinha pode ganhar um segundo grupo; se as matérias
-      // ainda não formam par, o par é criado ao salvar.
-      final escolha = await _escolherAcaoCelulaComUmaAula(
-        context,
-        naCelula.first,
-        mapaMaterias,
-      );
-      if (escolha == null) return null;
-      if (escolha == _AcaoCelula.editar) {
-        existente = naCelula.first;
-        grupo = existente.grupo;
-      } else {
-        grupo = proximoGrupoLivre(naCelula)!;
-      }
+      existente = naCelula.single;
     } else if (naCelula.length > 1) {
-      final escolhida = await _escolherGrupoParaEditar(
+      existente = await _escolherGrupoParaEditar(
         context,
         naCelula,
         mapaMaterias,
       );
-      if (escolhida == null) return null;
-      existente = escolhida;
-      grupo = escolhida.grupo;
+      if (existente == null) return null;
     }
+    final grupo = existente?.grupo ?? 1;
 
     if (!context.mounted) return null;
 
     final rotuloDia = GradeHoraria.dias[celula.indiceDia];
     final rotuloPeriodo = GradeHoraria.periodos[celula.indicePeriodo];
+    // "Grupo N" só quando a turma está dividida nesse horário (dois grupos
+    // ou G1 livre); aula da turma inteira não fala em grupo.
+    final turmaDividida = naCelula.length > 1 || grupo == 2;
+    final sufixoGrupo = turmaDividida ? ' · Grupo $grupo' : '';
     final titulo = existente == null
-        ? 'Nova aula — $rotuloDia $rotuloPeriodo · Grupo $grupo'
-        : 'Editar — $rotuloDia $rotuloPeriodo · Grupo $grupo';
+        ? 'Nova aula — $rotuloDia $rotuloPeriodo'
+        : 'Editar — $rotuloDia $rotuloPeriodo$sufixoGrupo';
 
     String? motivoRecusa(
-      ResultadoFormularioAula r,
-      List<Aula> aulas,
-    ) => validarSalvarAula(
+      ResultadoFormularioAula r, {
+      required List<Aula> aulas,
+      required List<CargaCursoMateria> cargas,
+      required List<AulaGeminadaCurso> pares,
+      required List<ProfessorMateria> ligacoes,
+      required List<IndisponibilidadeProfessor> indisponibilidades,
+    }) => validarSalvarAula(
       curso: curso,
       celula: celula,
       idMateria: r.idMateria,
@@ -183,6 +180,8 @@ class AcoesHorario {
       idSala: r.idSala,
       existente: existente,
       grupo: grupo,
+      cargas: cargas,
+      aulasGeminadas: pares,
       todasAulas: aulas,
       ligacoes: ligacoes,
       indisponibilidades: indisponibilidades,
@@ -190,10 +189,29 @@ class AcoesHorario {
 
     final resultado = await mostrarDialogoFormularioAula(
       context,
-      validar: (r) => motivoRecusa(r, todasAulas),
+      validar: (r) => motivoRecusa(
+        r,
+        aulas: todasAulas,
+        cargas: cargas,
+        pares: aulasGeminadas,
+        ligacoes: ligacoes,
+        indisponibilidades: indisponibilidades,
+      ),
+      avisoProfessor: (idMateria, idProfessor) => avisoProfessorNaCelula(
+        idProfessor: idProfessor,
+        celula: celula,
+        indisponibilidades: indisponibilidades,
+        todasAulas: todasAulas,
+        idAulaExcluida: existente?.id,
+      ),
       titulo: titulo,
-      // Todas as matérias cadastradas: uma fora da carga entra na carga.
-      materias: todasMaterias,
+      // Só os componentes da carga do curso (Cadastros). Ao editar, o atual
+      // continua na lista mesmo se saiu da carga.
+      materias: materiasParaDialogoAula(
+        materiasCurso: materiasDoCurso(curso.id, cargas, todasMaterias),
+        todasMaterias: todasMaterias,
+        existente: existente,
+      ),
       salas: salas,
       professoresDaMateria: (idMateria) => professoresParaDialogoAula(
         idMateria: idMateria,
@@ -210,61 +228,63 @@ class AcoesHorario {
       permitirExcluir: existente != null,
       mensagemExclusao: existente == null
           ? null
-          : 'Excluir a aula do grupo $grupo em $rotuloDia $rotuloPeriodo?',
+          : turmaDividida
+          ? 'Excluir a aula do grupo $grupo em $rotuloDia $rotuloPeriodo?'
+          : 'Excluir a aula de $rotuloDia $rotuloPeriodo?',
     );
 
     if (resultado == null) return null;
-
-    // Cadastro mais recente do curso (pode ter mudado com o diálogo aberto).
-    final cadastro = CadastroCurso(
-      cargas: (ref.read(provedorCargasCurso).valueOrNull ?? cargas)
-          .where((c) => c.idCurso == curso.id)
-          .toList(),
-      pares:
-          (ref.read(provedorAulasGeminadasCurso).valueOrNull ?? aulasGeminadas)
-              .where((p) => p.idCurso == curso.id)
-              .toList(),
-    );
     final repo = ref.read(provedorRepositorioAula);
+
+    // Dados mais recentes: a grade ou a Página 1/2 podem ter mudado
+    // enquanto o diálogo estava aberto (outra aba ou outra pessoa).
+    final aulasAgora = ref.read(provedorAulas).valueOrNull ?? todasAulas;
+    final paresAgora =
+        ref.read(provedorAulasGeminadasCurso).valueOrNull ?? aulasGeminadas;
 
     if (resultado is ExclusaoFormularioAula) {
       final excluida = existente;
       if (excluida == null) return null;
       iniciarGravacao();
-      final novoCadastro = cadastroAoExcluir(
-        cadastro,
-        excluida: excluida,
-        naCelula: naCelula,
-      );
-      // Aula geminada continua dividida: a que sobra vai para o grupo 2 e
-      // o grupo 1 fica livre (se o par continuar existindo).
-      final restante = naCelula.where((a) => a.id != excluida.id).toList();
-      final paraGrupo2 = [
-        if (restante.length == 1 &&
-            restante.single.grupo == 1 &&
-            novoCadastro.parDe(excluida.idMateria, restante.single.idMateria) !=
-                null)
-          _comGrupo(restante.single, 2),
-      ];
       try {
-        await repo.salvarComCadastro(
-          idCurso: curso.id,
-          excluir: [excluida.id],
-          atualizar: paraGrupo2,
-          cadastro: novoCadastro,
-        );
+        await repo.excluir(excluida.id);
+        // Aula dividida continua dividida: a que sobra vai para o grupo 2
+        // e o grupo 1 fica livre. Se as duas não formam mais par na
+        // Página 1, a que sobra vira aula comum (grupo 1).
+        final restante = aulasNaCelula(
+          aulasAgora,
+          curso.id,
+          celula,
+        ).where((a) => a.id != excluida.id).toList();
+        if (restante.length == 1) {
+          final novoGrupo = grupoDaQueSobra(
+            idCurso: curso.id,
+            excluida: excluida,
+            restante: restante.single,
+            aulasGeminadas: paresAgora,
+          );
+          if (novoGrupo != restante.single.grupo) {
+            await repo.atualizar(_comGrupo(restante.single, novoGrupo));
+          }
+        }
       } finally {
-        _invalidarGradeECadastro();
+        ref.invalidate(provedorAulas);
       }
       return null;
     }
 
     if (resultado is! ResultadoFormularioAula) return null;
 
-    // Confere de novo com as aulas mais recentes: a grade pode ter mudado
-    // enquanto o diálogo estava aberto.
-    final aulasAtuais = ref.read(provedorAulas).valueOrNull ?? todasAulas;
-    final erro = motivoRecusa(resultado, aulasAtuais);
+    final erro = motivoRecusa(
+      resultado,
+      aulas: aulasAgora,
+      cargas: ref.read(provedorCargasCurso).valueOrNull ?? cargas,
+      pares: paresAgora,
+      ligacoes: ref.read(provedorProfessorMaterias).valueOrNull ?? ligacoes,
+      indisponibilidades:
+          ref.read(provedorIndisponibilidades).valueOrNull ??
+          indisponibilidades,
+    );
     if (erro != null) return erro;
     iniciarGravacao();
 
@@ -276,54 +296,28 @@ class AcoesHorario {
       idMateria: resultado.idMateria,
       idProfessor: resultado.idProfessor,
       idSala: resultado.idSala,
-      grupo: grupo,
+      grupo: grupoAoSalvar(
+        idCurso: curso.id,
+        idMateria: resultado.idMateria,
+        grupoAtual: grupo,
+        outrasNaCelula: aulasNaCelula(
+          aulasAgora,
+          curso.id,
+          celula,
+        ).where((a) => a.id != existente?.id).toList(),
+        aulasGeminadas: paresAgora,
+      ),
     );
-    final doCurso = aulasAtuais.where((a) => a.idCurso == curso.id).toList();
-
     try {
       if (existente == null) {
-        await repo.salvarComCadastro(
-          idCurso: curso.id,
-          inserir: aula,
-          cadastro: cadastroAoCriar(
-            cadastro,
-            nova: aula,
-            aulasDoCurso: doCurso,
-            naCelula: naCelula,
-          ),
-        );
-      } else if (existente.idMateria == aula.idMateria) {
-        // Mesma matéria: só professor ou sala mudam; o cadastro não muda.
-        await repo.atualizar(aula);
+        await repo.adicionar(aula);
       } else {
-        // Trocar a matéria = excluir a antiga e criar a nova no cadastro.
-        final antiga = existente;
-        final semAntiga = cadastroAoExcluir(
-          cadastro,
-          excluida: antiga,
-          naCelula: naCelula,
-        );
-        await repo.salvarComCadastro(
-          idCurso: curso.id,
-          atualizar: [aula],
-          cadastro: cadastroAoCriar(
-            semAntiga,
-            nova: aula,
-            aulasDoCurso: doCurso.where((a) => a.id != antiga.id).toList(),
-            naCelula: naCelula.where((a) => a.id != antiga.id).toList(),
-          ),
-        );
+        await repo.atualizar(aula);
       }
     } finally {
-      _invalidarGradeECadastro();
+      ref.invalidate(provedorAulas);
     }
     return null;
-  }
-
-  void _invalidarGradeECadastro() {
-    ref.invalidate(provedorAulas);
-    ref.invalidate(provedorCargasCurso);
-    ref.invalidate(provedorAulasGeminadasCurso);
   }
 
   static Aula _comGrupo(Aula a, int grupo) => Aula(
@@ -347,6 +341,22 @@ class AcoesHorario {
     required List<Professor> professores,
     required List<IndisponibilidadeProfessor> indisponibilidades,
   }) {
+    // Aula comum solta em cima de outra aula comum: as duas trocam de lugar.
+    final outra = aulaParaTrocar(
+      aula: aula,
+      destino: destino,
+      todasAulas: todasAulas,
+      aulasGeminadas: aulasGeminadas,
+    );
+    if (outra != null) {
+      return validarTrocaAulas(
+        a: aula,
+        b: outra,
+        todasAulas: todasAulas,
+        professores: professores,
+        indisponibilidades: indisponibilidades,
+      );
+    }
     final originais = aulasQueMovemJunto(
       aula: aula,
       todasAulas: todasAulas,
@@ -373,6 +383,23 @@ class AcoesHorario {
     required List<IndisponibilidadeProfessor> indisponibilidades,
   }) async {
     if (aula.celula == destino) return null;
+
+    final outra = aulaParaTrocar(
+      aula: aula,
+      destino: destino,
+      todasAulas: todasAulas,
+      aulasGeminadas: aulasGeminadas,
+    );
+    if (outra != null) {
+      return _trocar(
+        iniciarGravacao: iniciarGravacao,
+        a: aula,
+        b: outra,
+        todasAulas: todasAulas,
+        professores: professores,
+        indisponibilidades: indisponibilidades,
+      );
+    }
 
     final originais = aulasQueMovemJunto(
       aula: aula,
@@ -414,32 +441,45 @@ class AcoesHorario {
     return null;
   }
 
-  Future<_AcaoCelula?> _escolherAcaoCelulaComUmaAula(
-    BuildContext context,
-    Aula aula,
-    Map<String, Materia> materias,
-  ) {
-    final nome = materias[aula.idMateria]?.nome ?? 'aula';
-    return showDialog<_AcaoCelula>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: Text('Horário — Grupo ${aula.grupo} ($nome)'),
-        children: [
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(context, _AcaoCelula.editar),
-            child: const Text('Editar este grupo'),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(context, _AcaoCelula.adicionarGrupo),
-            child: const Text('Adicionar outro grupo'),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-        ],
-      ),
+  /// Troca [a] e [b] de lugar. Se a gravação cair no meio, devolve as duas
+  /// para onde estavam.
+  Future<String?> _trocar({
+    required VoidCallback iniciarGravacao,
+    required Aula a,
+    required Aula b,
+    required List<Aula> todasAulas,
+    required List<Professor> professores,
+    required List<IndisponibilidadeProfessor> indisponibilidades,
+  }) async {
+    final motivo = validarTrocaAulas(
+      a: a,
+      b: b,
+      todasAulas: todasAulas,
+      professores: professores,
+      indisponibilidades: indisponibilidades,
     );
+    if (motivo != null) return motivo;
+    iniciarGravacao();
+
+    final repo = ref.read(provedorRepositorioAula);
+    try {
+      await repo.trocarAulas(a, b);
+    } catch (e) {
+      // Se falhou no meio, [a] ainda está na própria célula (talvez no
+      // grupo 2) e [b] pode estar no lugar de [a]. Volta [b] para a célula
+      // dela e depois [a] para o grupo 1.
+      try {
+        await repo.moverAulas([b], deslocamentoPeriodos: 0);
+        await repo.atualizar(a);
+      } catch (_) {
+        // Sem conexão nem para desfazer; o painel mostra o estado real
+        // quando os dados recarregarem.
+      }
+      rethrow;
+    } finally {
+      ref.invalidate(provedorAulas);
+    }
+    return null;
   }
 
   Future<Aula?> _escolherGrupoParaEditar(
@@ -457,7 +497,7 @@ class AcoesHorario {
               onPressed: () => Navigator.pop(context, aula),
               child: Text(
                 'Grupo ${aula.grupo} — '
-                '${materias[aula.idMateria]?.nome ?? 'Matéria'}',
+                '${materias[aula.idMateria]?.nome ?? 'Componente'}',
               ),
             ),
           SimpleDialogOption(
@@ -469,5 +509,3 @@ class AcoesHorario {
     );
   }
 }
-
-enum _AcaoCelula { editar, adicionarGrupo }

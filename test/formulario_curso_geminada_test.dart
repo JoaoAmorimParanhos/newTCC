@@ -202,7 +202,7 @@ void main() {
 
       expect(abertura.resultado, isNull);
       expect(
-        find.text('Aulas geminadas não podem passar da carga das matérias'),
+        find.text('Aulas divididas não podem passar da carga dos componentes'),
         findsOneWidget,
       );
     });
@@ -241,6 +241,26 @@ void main() {
       expect(_blocosSelecionados(tester, 0), 2);
     });
 
+    testWidgets('o (?) aparece uma vez no título de cada seção', (
+      tester,
+    ) async {
+      await _abrir(
+        tester,
+        cargas: [
+          carga(informatica.id, 4),
+          carga(ingles.id, 4),
+          carga(matematica.id, 4),
+        ],
+        pares: [
+          par(informatica.id, ingles.id, aulas: 2, blocos: 1),
+          par(informatica.id, matematica.id, aulas: 2, blocos: 1),
+        ],
+      );
+
+      expect(find.byTooltip('O que é Bloco?'), findsOneWidget);
+      expect(find.byTooltip('O que é Blocos?'), findsOneWidget);
+    });
+
     testWidgets('as 5 opções de turno aparecem', (tester) async {
       await _abrir(tester, cargas: _cargas8);
       await tester.tap(_porPrefixo('period-'));
@@ -249,8 +269,8 @@ void main() {
         'Manhã',
         'Tarde',
         'Noite',
-        'Manhã CT: Tarde',
-        'Tarde CT: Manhã',
+        'Manhã - CT: Tarde',
+        'Tarde - CT: Manhã',
       ]) {
         expect(find.text(rotulo), findsWidgets, reason: rotulo);
       }
@@ -341,7 +361,7 @@ void main() {
 
       expect(abertura.fechou, isFalse);
       expect(
-        find.text('Aulas geminadas não podem passar da carga das matérias'),
+        find.text('Aulas divididas não podem passar da carga dos componentes'),
         findsOneWidget,
       );
     });
@@ -359,7 +379,7 @@ void main() {
 
       expect(abertura.fechou, isFalse);
       expect(
-        find.text('Aula geminada precisa de duas matérias diferentes'),
+        find.text('Aula dividida precisa de dois componentes diferentes'),
         findsOneWidget,
       );
     });
@@ -374,7 +394,7 @@ void main() {
 
       expect(abertura.fechou, isFalse);
       expect(
-        find.text('Informe as duas matérias da aula geminada'),
+        find.text('Informe os dois componentes da aula dividida'),
         findsOneWidget,
       );
     });

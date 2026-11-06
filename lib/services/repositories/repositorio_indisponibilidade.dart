@@ -1,6 +1,7 @@
 import 'package:flutter_test_project/services/repositories/observar_tabela.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_test_project/services/repositories/buscar_todas_linhas.dart';
 import 'package:flutter_test_project/components/grade_horaria.dart';
 import 'package:flutter_test_project/model/professor/indisponibilidade_professor.dart';
 
@@ -16,7 +17,7 @@ class RepositorioIndisponibilidade {
       observarTabela(client: _client, tabela: _table, buscar: buscarTodos);
 
   Future<List<IndisponibilidadeProfessor>> buscarTodos() async {
-    final data = await _client.from(_table).select();
+    final data = await buscarTodasLinhas(_client, _table, ordem: const ['id']);
     return (data as List)
         .map(
           (row) => IndisponibilidadeProfessor.fromJson(

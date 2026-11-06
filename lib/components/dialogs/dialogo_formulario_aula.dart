@@ -36,10 +36,15 @@ Future<Object?> mostrarDialogoFormularioAula(
   /// Confere a aula antes de fechar; devolve o motivo da recusa ou null.
   /// Com recusa o diálogo fica aberto e mostra o motivo (nada se perde).
   String? Function(ResultadoFormularioAula resultado)? validar,
+
+  /// Aviso (em laranja) para o professor escolhido, por exemplo quando o
+  /// professor atual ficou indisponível neste horário; null = sem aviso.
+  String? Function(String idMateria, String idProfessor)? avisoProfessor,
 }) {
   return showDialog<Object>(
     context: context,
     builder: (context) => _AulaFormDialog(
+      avisoProfessor: avisoProfessor,
       titulo: titulo,
       materias: materias,
       salas: salas,
@@ -66,6 +71,7 @@ class _AulaFormDialog extends StatefulWidget {
     this.permitirExcluir = false,
     this.mensagemExclusao,
     this.validar,
+    this.avisoProfessor,
   });
 
   final String titulo;
@@ -78,6 +84,7 @@ class _AulaFormDialog extends StatefulWidget {
   final bool permitirExcluir;
   final String? mensagemExclusao;
   final String? Function(ResultadoFormularioAula resultado)? validar;
+  final String? Function(String idMateria, String idProfessor)? avisoProfessor;
 
   @override
   State<_AulaFormDialog> createState() => _AulaFormDialogState();
@@ -122,7 +129,7 @@ class _AulaFormDialogState extends State<_AulaFormDialog> {
     final idMateria = _idMateria;
     final idProfessor = _idProfessor;
     if (idMateria == null) {
-      setState(() => _erro = 'Selecione uma matéria');
+      setState(() => _erro = 'Selecione um componente');
       return;
     }
     if (idProfessor == null) {
@@ -164,6 +171,10 @@ class _AulaFormDialogState extends State<_AulaFormDialog> {
     final subjectValue = _seEm(_idMateria, widget.materias.map((s) => s.id).toSet());
     final professorValue =
         _seEm(_idProfessor, professores.map((p) => p.id).toSet());
+    final idMateriaAtual = _idMateria;
+    final aviso = idMateriaAtual == null || professorValue == null
+        ? null
+        : widget.avisoProfessor?.call(idMateriaAtual, professorValue);
     final roomValue = _idSala == null
         ? null
         : _seEm(_idSala, widget.salas.map((r) => r.id).toSet());
@@ -177,13 +188,13 @@ class _AulaFormDialogState extends State<_AulaFormDialog> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (widget.materias.isEmpty)
-              const Text('Este curso não tem matérias na carga horária.')
+              const Text('Este curso não tem componentes na carga horária.')
             else ...[
               DropdownButtonFormField<String>(
                 isExpanded: true,
                 key: ValueKey('subject-$subjectValue'),
                 initialValue: subjectValue,
-                decoration: const InputDecoration(labelText: 'Matéria'),
+                decoration: const InputDecoration(labelText: 'Componente'),
                 items: widget.materias
                     .map(
                       (s) => DropdownMenuItem(
@@ -228,22 +239,19 @@ class _AulaFormDialogState extends State<_AulaFormDialog> {
                   padding: EdgeInsets.only(top: 8),
                   child: Text(
                     'Nenhum professor disponível neste horário. '
-                    'Escolha outra matéria ou ajuste a Página 2.',
+                    'Escolha outro componente ou ajuste a Disponibilidade.',
                     style: TextStyle(color: Colors.red),
                   ),
                 ),
-              // Só quando a matéria continua a mesma: trocar de matéria
-              // limpa o professor de propósito, não é indisponibilidade.
-              if (widget.idProfessorInicial != null &&
-                  _idMateria == widget.idMateriaInicial &&
-                  professorValue == null &&
-                  professores.isNotEmpty)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
+              // O professor atual continua na lista mesmo bloqueado (para a
+              // pessoa ver quem era); o aviso diz por que precisa trocar.
+              if (aviso != null)
+                Padding(
+                  key: const ValueKey('aviso-professor'),
+                  padding: const EdgeInsets.only(top: 8),
                   child: Text(
-                    'O professor atual não está disponível neste horário. '
-                    'Selecione outro para salvar.',
-                    style: TextStyle(color: Colors.orange, fontSize: 13),
+                    aviso,
+                    style: const TextStyle(color: Colors.orange, fontSize: 13),
                   ),
                 ),
               const SizedBox(height: 12),

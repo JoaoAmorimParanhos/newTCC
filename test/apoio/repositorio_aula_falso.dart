@@ -1,5 +1,4 @@
 import 'package:flutter_test_project/model/aula/aula.dart';
-import 'package:flutter_test_project/pages/page3/helpers/cadastro_da_grade.dart';
 import 'package:flutter_test_project/services/repositories/repositorio_aula.dart';
 
 /// Repositório de aulas em memória: guarda o que a tela salvou ou excluiu,
@@ -50,59 +49,6 @@ class RepositorioAulaFalso implements RepositorioAula {
     aulas
       ..clear()
       ..addAll(novas.map(_comNovoId));
-  }
-
-  /// Último cadastro (carga e pares) gravado por [salvarComCadastro].
-  CadastroCurso? ultimoCadastro;
-
-  /// Quantas chamadas de [salvarComCadastro] ainda devem falhar.
-  int falhasAoSalvarComCadastro = 0;
-
-  @override
-  Future<String?> salvarComCadastro({
-    required String idCurso,
-    required CadastroCurso cadastro,
-    Aula? inserir,
-    List<Aula> atualizar = const [],
-    List<String> excluir = const [],
-  }) async {
-    if (falhasAoSalvarComCadastro > 0) {
-      falhasAoSalvarComCadastro--;
-      throw Exception('falha simulada ao salvar aula e cadastro');
-    }
-    aulas.removeWhere((a) => excluir.contains(a.id));
-    for (final a in atualizar) {
-      await this.atualizar(a);
-    }
-    String? id;
-    if (inserir != null) id = await adicionar(inserir);
-    ultimoCadastro = cadastro;
-
-    // Como no banco: grupo 2 sozinho de matéria sem par vira aula completa.
-    for (var i = 0; i < aulas.length; i++) {
-      final a = aulas[i];
-      if (a.idCurso != idCurso || a.grupo != 2) continue;
-      final sozinha = !aulas.any(
-        (b) =>
-            b.id != a.id &&
-            b.idCurso == a.idCurso &&
-            b.indiceDia == a.indiceDia &&
-            b.indicePeriodo == a.indicePeriodo,
-      );
-      final temPar = cadastro.pares.any((p) => p.contemMateria(a.idMateria));
-      if (sozinha && !temPar) {
-        aulas[i] = Aula(
-          id: a.id,
-          idCurso: a.idCurso,
-          indiceDia: a.indiceDia,
-          indicePeriodo: a.indicePeriodo,
-          idMateria: a.idMateria,
-          idProfessor: a.idProfessor,
-          idSala: a.idSala,
-        );
-      }
-    }
-    return id;
   }
 
   @override
@@ -164,6 +110,43 @@ class RepositorioAulaFalso implements RepositorioAula {
       aulas[i] = nova;
       ordemDaUltimaMudanca.add(nova.id);
     }
+  }
+
+  /// Se true, a próxima troca falha depois do 1º passo (queda de conexão).
+  bool falharTrocaNoMeio = false;
+
+  @override
+  Future<void> trocarAulas(Aula a, Aula b) async {
+    Aula em(Aula x, Aula lugar, int grupo) => Aula(
+      id: x.id,
+      idCurso: x.idCurso,
+      indiceDia: lugar.indiceDia,
+      indicePeriodo: lugar.indicePeriodo,
+      idMateria: x.idMateria,
+      idProfessor: x.idProfessor,
+      idSala: x.idSala,
+      grupo: grupo,
+    );
+    void gravar(Aula nova) {
+      final colide = aulas.any(
+        (o) =>
+            o.id != nova.id &&
+            o.idCurso == nova.idCurso &&
+            o.indiceDia == nova.indiceDia &&
+            o.indicePeriodo == nova.indicePeriodo &&
+            o.grupo == nova.grupo,
+      );
+      if (colide) throw Exception('duplicate key (${nova.id})');
+      aulas[aulas.indexWhere((o) => o.id == nova.id)] = nova;
+    }
+
+    gravar(em(a, a, 2));
+    if (falharTrocaNoMeio) {
+      falharTrocaNoMeio = false;
+      throw Exception('falha simulada no meio da troca');
+    }
+    gravar(em(b, a, 1));
+    gravar(em(a, b, 1));
   }
 
   @override

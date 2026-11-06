@@ -32,8 +32,8 @@ enum PreferenciaPeriodo {
     PreferenciaPeriodo.manha => 'Manhã',
     PreferenciaPeriodo.tarde => 'Tarde',
     PreferenciaPeriodo.noite => 'Noite',
-    PreferenciaPeriodo.manhaTarde => 'Manhã CT: Tarde',
-    PreferenciaPeriodo.tardeManha => 'Tarde CT: Manhã',
+    PreferenciaPeriodo.manhaTarde => 'Manhã - CT: Tarde',
+    PreferenciaPeriodo.tardeManha => 'Tarde - CT: Manhã',
   };
 
   /// Turnos que o gerador usa, na ordem em que preenche.

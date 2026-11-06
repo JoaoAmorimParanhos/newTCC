@@ -98,7 +98,7 @@ class _MateriaFormDialogState extends State<_MateriaFormDialog> {
             ),
             const SizedBox(height: 16),
             const Text(
-              'Professores que dão esta matéria',
+              'Professores que dão este componente',
               style: TextStyle(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),

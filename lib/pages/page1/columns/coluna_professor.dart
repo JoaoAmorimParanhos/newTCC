@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test_project/components/coluna_quadro.dart';
+import 'package:flutter_test_project/services/texto.dart';
 import 'package:flutter_test_project/components/dialogs/dialogo_confirmar_exclusao.dart';
 import 'package:flutter_test_project/components/dialogs/dialogo_formulario_professor.dart';
 import 'package:flutter_test_project/components/cartao_item.dart';
@@ -142,13 +143,17 @@ class ColunaProfessor extends ConsumerWidget {
           visualDensity: VisualDensity.compact,
         ),
       ],
-      child: professorsAsync.when(
-        data: (professores) {
-          if (professores.isEmpty) {
+      construirComBusca: (busca) => professorsAsync.when(
+        data: (todos) {
+          if (todos.isEmpty) {
             return const DicaColunaVazia(
               mensagem: 'Nenhum professor cadastrado',
             );
           }
+          final professores = todos
+              .where((p) => correspondeBusca(p.nome, busca))
+              .toList();
+          if (professores.isEmpty) return DicaBuscaVazia(busca: busca);
 
           final ligacoes = linksAsync.valueOrNull ?? const [];
           return ListView(
@@ -160,8 +165,8 @@ class ColunaProfessor extends ConsumerWidget {
               return CartaoItem(
                 titulo: professor.nome,
                 subtitulo: count == 1
-                    ? '1 matéria'
-                    : '$count matérias',
+                    ? '1 componente'
+                    : '$count componentes',
                 aoEditar: () => _editar(context, ref, professor),
                 aoExcluir: () => _excluir(context, ref, professor),
               );

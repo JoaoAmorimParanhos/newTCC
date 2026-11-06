@@ -44,7 +44,8 @@ class _LinhaAulaGeminada {
   }) : controladorPeriodos = TextEditingController(text: '$quantidadePeriodos'),
        // Vazio = mesma quantidade da matéria A.
        controladorPeriodosB = TextEditingController(
-         text: quantidadePeriodosB == null ||
+         text:
+             quantidadePeriodosB == null ||
                  quantidadePeriodosB == quantidadePeriodos
              ? ''
              : '$quantidadePeriodosB',
@@ -77,10 +78,15 @@ Future<ResultadoFormularioCurso?> mostrarDialogoFormularioCurso(
   List<CargaCursoMateria> cargasIniciais = const [],
   List<AulaGeminadaCurso> aulasGeminadasIniciais = const [],
   String idCurso = '0',
+
+  /// Chamado depois de validar e antes de fechar; false = continua aberto.
+  Future<bool> Function(ResultadoFormularioCurso resultado)?
+  confirmarAntesDeSalvar,
 }) {
   return showDialog<ResultadoFormularioCurso>(
     context: context,
     builder: (context) => _CourseFormDialog(
+      confirmarAntesDeSalvar: confirmarAntesDeSalvar,
       titulo: titulo,
       materias: materias,
       salas: salas,
@@ -105,8 +111,11 @@ class _CourseFormDialog extends StatefulWidget {
     required this.cargasIniciais,
     required this.aulasGeminadasIniciais,
     required this.idCurso,
+    this.confirmarAntesDeSalvar,
   });
 
+  final Future<bool> Function(ResultadoFormularioCurso resultado)?
+  confirmarAntesDeSalvar;
   final String titulo;
   final List<Materia> materias;
   final List<Sala> salas;
@@ -127,7 +136,28 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
   late final List<_LinhaAulaGeminada> _linhasGeminadas;
   String? _idSala;
   late PreferenciaPeriodo _preferenciaPeriodo;
-  String? _erro;
+  String? _erroNome;
+  final Map<int, String> _errosCarga = {};
+  final Map<int, String> _errosDividida = {};
+
+  void _limparErros() {
+    _erroNome = null;
+    _errosCarga.clear();
+    _errosDividida.clear();
+  }
+
+  /// Onde está o erro, para o aviso ao lado do botão Salvar (a lista de
+  /// componentes rola e o erro pode ficar fora da tela).
+  String? get _resumoErro {
+    if (_erroNome != null) return 'Corrija o nome do curso.';
+    if (_errosCarga.isNotEmpty) {
+      return 'Corrija a linha ${_errosCarga.keys.first + 1} dos componentes.';
+    }
+    if (_errosDividida.isNotEmpty) {
+      return 'Corrija a aula dividida ${_errosDividida.keys.first + 1}.';
+    }
+    return null;
+  }
 
   @override
   void initState() {
@@ -181,6 +211,7 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
 
   void _removerLinha(int index) {
     setState(() {
+      _limparErros();
       _linhas[index].dispose();
       _linhas.removeAt(index);
       if (_linhas.isEmpty) _linhas.add(_LinhaCarga());
@@ -189,6 +220,7 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
 
   void _removerLinhaGeminada(int index) {
     setState(() {
+      _limparErros();
       _linhasGeminadas[index].dispose();
       _linhasGeminadas.removeAt(index);
     });
@@ -259,34 +291,41 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
     return row.quantidadeBlocos;
   }
 
-  void _enviar() {
+  Future<void> _enviar() async {
+    setState(_limparErros);
     final nome = _controladorNome.text.trim();
     if (nome.isEmpty) {
-      setState(() => _erro = 'Informe o nome do curso');
+      setState(() => _erroNome = 'Informe o nome do curso');
       return;
     }
 
     final cargas = <CargaCursoMateria>[];
     final seenSubjects = <String>{};
 
-    for (final row in _linhas) {
+    for (var i = 0; i < _linhas.length; i++) {
+      final row = _linhas[i];
       final idMateria = row.idMateria;
       if (idMateria == null) continue;
 
       final count = int.tryParse(row.controladorQuantidade.text.trim());
       if (count == null || count < 1) {
-        setState(() => _erro = 'Quantidade de aulas deve ser um número ≥ 1');
+        setState(
+          () => _errosCarga[i] = 'Quantidade de aulas deve ser um número ≥ 1',
+        );
         return;
       }
       if (!seenSubjects.add(idMateria)) {
-        setState(() => _erro = 'Cada matéria só pode aparecer uma vez');
+        setState(
+          () => _errosCarga[i] = 'Cada componente só pode aparecer uma vez',
+        );
         return;
       }
 
       _ajustarBloco(row);
       if (row.tamanhoBloco > count) {
         setState(
-          () => _erro = 'Bloco não pode ser maior que a carga da matéria',
+          () => _errosCarga[i] =
+              'Bloco não pode ser maior que a carga do componente',
         );
         return;
       }
@@ -308,23 +347,29 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
     final periodosPorMateria = <String, int>{};
     final aulasGeminadas = <AulaGeminadaCurso>[];
     final paresVistos = <String>{};
-    for (final row in _linhasGeminadas) {
+    for (var i = 0; i < _linhasGeminadas.length; i++) {
+      final row = _linhasGeminadas[i];
       final idMateriaA = row.idMateriaA;
       final idMateriaB = row.idMateriaB;
       if (idMateriaA == null && idMateriaB == null) continue;
       if (idMateriaA == null || idMateriaB == null) {
-        setState(() => _erro = 'Informe as duas matérias da aula geminada');
+        setState(
+          () => _errosDividida[i] =
+              'Informe os dois componentes da aula dividida',
+        );
         return;
       }
       if (idMateriaA == idMateriaB) {
         setState(
-          () => _erro = 'Aula geminada precisa de duas matérias diferentes',
+          () => _errosDividida[i] =
+              'Aula dividida precisa de dois componentes diferentes',
         );
         return;
       }
       if (!idsCargas.contains(idMateriaA) || !idsCargas.contains(idMateriaB)) {
         setState(
-          () => _erro = 'Aulas geminadas devem usar matérias da carga do curso',
+          () => _errosDividida[i] =
+              'Aulas divididas devem usar componentes da carga do curso',
         );
         return;
       }
@@ -336,23 +381,28 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
           periodosA < 1 ||
           periodosB == null ||
           periodosB < 1) {
-        setState(() => _erro = 'Aulas da aula geminada deve ser um número ≥ 1');
+        setState(
+          () => _errosDividida[i] =
+              'Qtd. de aulas da aula dividida deve ser um número ≥ 1',
+        );
         return;
       }
       final periodos = periodosA > periodosB ? periodosA : periodosB;
-      final blocos = row.quantidadeBlocos;
+      // O valor guardado pode estar fora da faixa (quantidade ou turno
+      // mudou depois); vale o que o campo mostra.
+      final blocos = _valorBlocosGeminada(row);
       if (blocos < 1 || blocos > periodos) {
         setState(
-          () => _erro =
-              'Blocos da aula geminada devem ir de 1 até o número de aulas',
+          () => _errosDividida[i] =
+              'Blocos da aula dividida devem ir de 1 até a quantidade de aulas',
         );
         return;
       }
       if (dividirEmBlocos(periodos, blocos).first >
           _preferenciaPeriodo.maxAulasPorBloco) {
         setState(
-          () => _erro =
-              'Cada bloco geminado pode ter no máximo '
+          () => _errosDividida[i] =
+              'Cada bloco da aula dividida pode ter no máximo '
               '${_preferenciaPeriodo.maxAulasPorBloco} aulas (um turno)',
         );
         return;
@@ -361,8 +411,8 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
       final cargaB = cargaPorMateria[idMateriaB] ?? 0;
       if (periodosA > cargaA || periodosB > cargaB) {
         setState(
-          () =>
-              _erro = 'Aulas geminadas não podem passar da carga das matérias',
+          () => _errosDividida[i] =
+              'Aulas divididas não podem passar da carga dos componentes',
         );
         return;
       }
@@ -370,8 +420,8 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
       final usadoB = (periodosPorMateria[idMateriaB] ?? 0) + periodosB;
       if (usadoA > cargaA || usadoB > cargaB) {
         setState(
-          () => _erro =
-              'A soma das aulas geminadas passa da carga de uma matéria',
+          () => _errosDividida[i] =
+              'A soma das aulas divididas passa da carga de um componente',
         );
         return;
       }
@@ -387,22 +437,26 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
         quantidadeBlocos: blocos,
       );
       if (!paresVistos.add(par.chave)) {
-        setState(() => _erro = 'Par de aula geminada repetido');
+        setState(() => _errosDividida[i] = 'Par de aula dividida repetido');
         return;
       }
       aulasGeminadas.add(par);
     }
 
-    setState(() => _erro = null);
-    Navigator.of(context).pop(
-      ResultadoFormularioCurso(
-        nome: nome,
-        idSala: _idSala,
-        preferenciaPeriodo: _preferenciaPeriodo,
-        cargas: cargas,
-        aulasGeminadas: aulasGeminadas,
-      ),
+    setState(_limparErros);
+    final resultado = ResultadoFormularioCurso(
+      nome: nome,
+      idSala: _idSala,
+      preferenciaPeriodo: _preferenciaPeriodo,
+      cargas: cargas,
+      aulasGeminadas: aulasGeminadas,
     );
+    // Ex.: componente tirado da carga apaga aulas da grade; quem abriu o
+    // formulário pergunta antes. Cancelando, o formulário continua aberto.
+    final confirmar = widget.confirmarAntesDeSalvar;
+    if (confirmar != null && !await confirmar(resultado)) return;
+    if (!mounted) return;
+    Navigator.of(context).pop(resultado);
   }
 
   Widget _secaoAulasGeminadas() {
@@ -414,12 +468,12 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
       children: [
         Row(
           children: [
-            const Expanded(
-              child: Text(
-                'Aulas geminadas',
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
+            const Text(
+              'Aulas divididas',
+              style: TextStyle(fontWeight: FontWeight.w600),
             ),
+            const BotaoAjudaBlocosGeminada(),
+            const Spacer(),
             TextButton.icon(
               onPressed: podeCadastrarPares ? _adicionarLinhaGeminada : null,
               icon: const Icon(Icons.add),
@@ -429,10 +483,10 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
         ),
         if (podeCadastrarPares && _linhasGeminadas.isNotEmpty) ...[
           const Text(
-            'Aulas: quantas aulas o par tem junto na semana. '
-            'Blocos: em quantos conjuntos de aulas seguidas elas são '
-            'divididas ao longo dos dias (ex.: 8 aulas em 2 blocos = '
-            '2 conjuntos de 4).',
+            'Qtd. de aulas: quantas aulas cada componente tem na aula '
+            'dividida (a primeira é do Componente A e a segunda do B; vazia '
+            '= igual à do A). Blocos: em quantos conjuntos de aulas seguidas '
+            'elas são divididas ao longo dos dias.',
             style: TextStyle(fontSize: 12),
           ),
           const SizedBox(height: 8),
@@ -458,7 +512,7 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
                                   ? _linhasGeminadas[i].idMateriaA
                                   : null,
                               decoration: const InputDecoration(
-                                labelText: 'Matéria A',
+                                labelText: 'Componente A',
                                 isDense: true,
                               ),
                               items: materiasComCarga
@@ -490,7 +544,7 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
                                   ? _linhasGeminadas[i].idMateriaB
                                   : null,
                               decoration: const InputDecoration(
-                                labelText: 'Matéria B',
+                                labelText: 'Componente B',
                                 isDense: true,
                               ),
                               items: materiasComCarga
@@ -527,16 +581,12 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
                               inputFormatters: [
                                 FilteringTextInputFormatter.digitsOnly,
                               ],
-                              onChanged: (_) {
-                                setState(() {
-                                  final row = _linhasGeminadas[i];
-                                  row.quantidadeBlocos = _valorBlocosGeminada(
-                                    row,
-                                  );
-                                });
-                              },
+                              // Só redesenha: o Blocos escolhido fica guardado e
+                              // o campo mostra o valor que cabe (apagar o número
+                              // para digitar outro não perde a escolha).
+                              onChanged: (_) => setState(() {}),
                               decoration: const InputDecoration(
-                                labelText: 'Aulas de A',
+                                labelText: 'Qtd. de aulas',
                                 isDense: true,
                               ),
                             ),
@@ -551,16 +601,12 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
                               inputFormatters: [
                                 FilteringTextInputFormatter.digitsOnly,
                               ],
-                              onChanged: (_) {
-                                setState(() {
-                                  final row = _linhasGeminadas[i];
-                                  row.quantidadeBlocos = _valorBlocosGeminada(
-                                    row,
-                                  );
-                                });
-                              },
+                              // Só redesenha: o Blocos escolhido fica guardado e
+                              // o campo mostra o valor que cabe (apagar o número
+                              // para digitar outro não perde a escolha).
+                              onChanged: (_) => setState(() {}),
                               decoration: const InputDecoration(
-                                labelText: 'Aulas de B',
+                                labelText: 'Qtd. de aulas',
                                 hintText: 'igual a A',
                                 isDense: true,
                               ),
@@ -604,10 +650,15 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
                               },
                             ),
                           ),
-                          // No lugar do botão de remover da linha de cima.
-                          const BotaoAjudaBlocosGeminada(),
+                          // Mesmo espaço do botão de remover da linha de cima.
+                          const SizedBox(width: 48),
                         ],
                       ),
+                      if (_errosDividida[i] != null)
+                        _TextoErro(
+                          _errosDividida[i]!,
+                          key: ValueKey('erro-dividida-$i'),
+                        ),
                     ],
                   ),
                 ),
@@ -634,7 +685,7 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
                 autofocus: true,
                 decoration: InputDecoration(
                   labelText: 'Nome do curso',
-                  errorText: _erro,
+                  errorText: _erroNome,
                 ),
               ),
               const SizedBox(height: 12),
@@ -653,14 +704,9 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
                 onChanged: (value) {
                   if (value == null) return;
                   setState(() {
+                    // A noite só tem 4 horários: o campo mostra o bloco
+                    // encolhido, mas a escolha volta se o turno voltar.
                     _preferenciaPeriodo = value;
-                    // A noite só tem 4 horários: blocos maiores encolhem.
-                    for (final row in _linhas) {
-                      _ajustarBloco(row);
-                    }
-                    for (final row in _linhasGeminadas) {
-                      row.quantidadeBlocos = _valorBlocosGeminada(row);
-                    }
                   });
                 },
               ),
@@ -688,12 +734,12 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  const Expanded(
-                    child: Text(
-                      'Matérias, carga e blocos',
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
+                  const Text(
+                    'Componentes, carga e blocos',
+                    style: TextStyle(fontWeight: FontWeight.w600),
                   ),
+                  const BotaoAjudaBloco(),
+                  const Spacer(),
                   TextButton.icon(
                     onPressed: widget.materias.isEmpty ? null : _adicionarLinha,
                     icon: const Icon(Icons.add),
@@ -711,89 +757,99 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
                         for (var i = 0; i < _linhas.length; i++)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 8),
-                            child: Row(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Expanded(
-                                  flex: 3,
-                                  child: DropdownButtonFormField<String>(
-                                    key: ValueKey(
-                                      'load-$i-${_linhas[i].idMateria}',
-                                    ),
-                                    initialValue: _linhas[i].idMateria,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Matéria',
-                                      isDense: true,
-                                    ),
-                                    items: widget.materias
-                                        .map(
-                                          (subject) => DropdownMenuItem(
-                                            value: subject.id,
-                                            child: Text(subject.nome),
-                                          ),
-                                        )
-                                        .toList(),
-                                    onChanged: (value) {
-                                      setState(
-                                        () => _linhas[i].idMateria = value,
-                                      );
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: TextField(
-                                    controller:
-                                        _linhas[i].controladorQuantidade,
-                                    keyboardType: TextInputType.number,
-                                    inputFormatters: [
-                                      FilteringTextInputFormatter.digitsOnly,
-                                    ],
-                                    onChanged: (_) {
-                                      setState(() => _ajustarBloco(_linhas[i]));
-                                    },
-                                    decoration: const InputDecoration(
-                                      labelText: 'Aulas',
-                                      isDense: true,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: DropdownButtonFormField<int>(
-                                    key: ValueKey(
-                                      'block-$i-${_linhas[i].tamanhoBloco}-${_quantidadeAulas(_linhas[i])}',
-                                    ),
-                                    initialValue: _valorBloco(_linhas[i]),
-                                    decoration: const InputDecoration(
-                                      labelText: 'Bloco',
-                                      isDense: true,
-                                    ),
-                                    items: [
-                                      for (
-                                        var value = 1;
-                                        value <= _limiteBloco(_linhas[i]);
-                                        value++
-                                      )
-                                        DropdownMenuItem(
-                                          value: value,
-                                          child: Text('$value'),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      flex: 3,
+                                      child: DropdownButtonFormField<String>(
+                                        key: ValueKey(
+                                          'load-$i-${_linhas[i].idMateria}',
                                         ),
-                                    ],
-                                    onChanged: (value) {
-                                      if (value != null) {
-                                        setState(
-                                          () => _linhas[i].tamanhoBloco = value,
-                                        );
-                                      }
-                                    },
+                                        initialValue: _linhas[i].idMateria,
+                                        decoration: const InputDecoration(
+                                          labelText: 'Componente',
+                                          isDense: true,
+                                        ),
+                                        items: widget.materias
+                                            .map(
+                                              (subject) => DropdownMenuItem(
+                                                value: subject.id,
+                                                child: Text(subject.nome),
+                                              ),
+                                            )
+                                            .toList(),
+                                        onChanged: (value) {
+                                          setState(
+                                            () => _linhas[i].idMateria = value,
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: TextField(
+                                        controller:
+                                            _linhas[i].controladorQuantidade,
+                                        keyboardType: TextInputType.number,
+                                        inputFormatters: [
+                                          FilteringTextInputFormatter
+                                              .digitsOnly,
+                                        ],
+                                        // Só redesenha: o Bloco escolhido fica guardado.
+                                        onChanged: (_) => setState(() {}),
+                                        decoration: const InputDecoration(
+                                          labelText: 'Qtd. de aulas',
+                                          isDense: true,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: DropdownButtonFormField<int>(
+                                        key: ValueKey(
+                                          'block-$i-${_linhas[i].tamanhoBloco}-${_quantidadeAulas(_linhas[i])}',
+                                        ),
+                                        initialValue: _valorBloco(_linhas[i]),
+                                        decoration: const InputDecoration(
+                                          labelText: 'Bloco',
+                                          isDense: true,
+                                        ),
+                                        items: [
+                                          for (
+                                            var value = 1;
+                                            value <= _limiteBloco(_linhas[i]);
+                                            value++
+                                          )
+                                            DropdownMenuItem(
+                                              value: value,
+                                              child: Text('$value'),
+                                            ),
+                                        ],
+                                        onChanged: (value) {
+                                          if (value != null) {
+                                            setState(
+                                              () => _linhas[i].tamanhoBloco =
+                                                  value,
+                                            );
+                                          }
+                                        },
+                                      ),
+                                    ),
+                                    IconButton(
+                                      onPressed: () => _removerLinha(i),
+                                      tooltip: 'Remover linha',
+                                      icon: const Icon(Icons.close),
+                                    ),
+                                  ],
+                                ),
+                                if (_errosCarga[i] != null)
+                                  _TextoErro(
+                                    _errosCarga[i]!,
+                                    key: ValueKey('erro-carga-$i'),
                                   ),
-                                ),
-                                const BotaoAjudaBloco(),
-                                IconButton(
-                                  onPressed: () => _removerLinha(i),
-                                  tooltip: 'Remover linha',
-                                  icon: const Icon(Icons.close),
-                                ),
                               ],
                             ),
                           ),
@@ -809,12 +865,39 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
         ),
       ),
       actions: [
+        if (_resumoErro != null)
+          Text(
+            _resumoErro!,
+            key: const ValueKey('resumo-erro'),
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancelar'),
         ),
         FilledButton(onPressed: _enviar, child: const Text('Salvar')),
       ],
+    );
+  }
+}
+
+/// Mensagem de erro em vermelho logo abaixo da linha que tem o problema.
+class _TextoErro extends StatelessWidget {
+  const _TextoErro(this.texto, {super.key});
+
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, left: 4),
+      child: Text(
+        texto,
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.error,
+          fontSize: 12,
+        ),
+      ),
     );
   }
 }

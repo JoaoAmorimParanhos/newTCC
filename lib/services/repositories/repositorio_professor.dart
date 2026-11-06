@@ -1,6 +1,7 @@
 import 'package:flutter_test_project/services/repositories/observar_tabela.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_test_project/services/repositories/buscar_todas_linhas.dart';
 import 'package:flutter_test_project/model/professor/professor.dart';
 import 'package:flutter_test_project/model/professor/professor_materia.dart';
 
@@ -30,7 +31,11 @@ class RepositorioProfessor {
   }
 
   Future<List<ProfessorMateria>> buscarTodasLigacoes() async {
-    final data = await _client.from(_linkTable).select();
+    final data = await buscarTodasLinhas(
+      _client,
+      _linkTable,
+      ordem: const ['id_professor', 'id_materia'],
+    );
     return (data as List)
         .map(
           (row) => ProfessorMateria.fromJson(row as Map<String, dynamic>),

@@ -232,12 +232,12 @@ void main() {
       );
 
       expect(
-        r.falhas.any((f) => f.contains('Não coube aula geminada')),
+        r.falhas.any((f) => f.contains('Não coube aula dividida')),
         isTrue,
       );
       expect(
         r.falhas.any(
-          (f) => f.contains('2 horário(s); essas aulas foram colocadas como aulas comuns'),
+          (f) => f.contains('2 horário(s); essas aulas serão tentadas como aulas comuns'),
         ),
         isTrue,
       );

@@ -246,7 +246,7 @@ class _Page3State extends ConsumerState<Page3> {
     }
 
     return LayoutBase(
-      titulo: 'Página 3',
+      titulo: 'Horário',
       body: Padding(
         padding: const EdgeInsets.all(8),
         child: Column(

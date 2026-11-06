@@ -7,6 +7,7 @@ import 'package:flutter_test_project/model/curso/preferencia_periodo.dart';
 import 'package:flutter_test_project/model/materia/materia.dart';
 import 'package:flutter_test_project/model/professor/professor.dart';
 import 'package:flutter_test_project/model/sala/sala.dart';
+import 'package:flutter_test_project/services/texto.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -62,6 +63,22 @@ List<SegmentoGrade> agruparAulasSeguidas(List<List<Aula>> celulas) {
 class ExportadorHorarioPdf {
   const ExportadorHorarioPdf();
 
+  /// Sala que aparece na aula do PDF: só quando é diferente da sala padrão
+  /// do curso (a padrão já sai no topo da folha). Vazio = não imprime.
+  static String salaParaImprimir(
+    Aula aula, {
+    required String? idSalaPadrao,
+    required Map<String, Sala> salas,
+  }) {
+    final idSala = aula.idSala;
+    if (idSala == null || idSala == idSalaPadrao) return '';
+    return salas[idSala]?.rotulo ?? '';
+  }
+
+  /// Chave para ordenar nomes em português: sem diferença de maiúsculas
+  /// nem de acentos ("Álgebra" fica junto de "Algoritmos", antes de "Z").
+  static String chaveOrdenacao(String nome) => normalizarTexto(nome);
+
   static const double _margem = 24;
   static const double _alturaTitulo = 24;
   static const double _alturaSalaPadrao = 18;
@@ -88,7 +105,7 @@ class ExportadorHorarioPdf {
     final mapaSalas = {for (final s in salas) s.id: s};
 
     final listaCursos = List<Curso>.from(cursos)
-      ..sort((a, b) => a.nome.compareTo(b.nome));
+      ..sort((a, b) => chaveOrdenacao(a.nome).compareTo(chaveOrdenacao(b.nome)));
 
     for (final curso in listaCursos) {
       final porCelula = <CelulaGrade, List<Aula>>{};
@@ -142,6 +159,11 @@ class ExportadorHorarioPdf {
                   mapaMaterias: mapaMaterias,
                   mapaProfessores: mapaProfessores,
                   horarios: horarios,
+                  salaDaAula: (a) => salaParaImprimir(
+                    a,
+                    idSalaPadrao: curso.idSala,
+                    salas: mapaSalas,
+                  ),
                 ),
               ],
             );
@@ -222,6 +244,7 @@ class ExportadorHorarioPdf {
     required Map<String, String> mapaMaterias,
     required Map<String, String> mapaProfessores,
     required Map<int, String> horarios,
+    required String Function(Aula aula) salaDaAula,
   }) {
 
     List<pw.Widget> turno(int dia, List<int> periodos) => [
@@ -236,6 +259,7 @@ class ExportadorHorarioPdf {
             altura: alturaLinha * segmento.tamanho,
             mapaMaterias: mapaMaterias,
             mapaProfessores: mapaProfessores,
+            salaDaAula: salaDaAula,
           ),
         ),
     ];
@@ -359,6 +383,7 @@ class ExportadorHorarioPdf {
     required double altura,
     required Map<String, String> mapaMaterias,
     required Map<String, String> mapaProfessores,
+    required String Function(Aula aula) salaDaAula,
   }) {
     if (aulas.isEmpty) return pw.SizedBox();
     // Com a grade inteira (16 períodos) a linha é baixa: nome da matéria
@@ -366,7 +391,7 @@ class ExportadorHorarioPdf {
     final linhasMateria = altura >= 30 ? 2 : 1;
 
     pw.Widget umaAula(Aula aula, {required bool comGrupo}) {
-      final materia = mapaMaterias[aula.idMateria] ?? 'Matéria';
+      final materia = mapaMaterias[aula.idMateria] ?? 'Componente';
       return pw.Padding(
         padding: const pw.EdgeInsets.all(2),
         child: pw.Column(
@@ -379,7 +404,10 @@ class ExportadorHorarioPdf {
               style: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold),
             ),
             pw.Text(
-              mapaProfessores[aula.idProfessor] ?? 'Professor',
+              [
+                mapaProfessores[aula.idProfessor] ?? 'Professor',
+                salaDaAula(aula),
+              ].where((t) => t.isNotEmpty).join(' · '),
               textAlign: pw.TextAlign.center,
               maxLines: 1,
               style: const pw.TextStyle(fontSize: 6),

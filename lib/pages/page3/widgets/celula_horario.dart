@@ -74,7 +74,7 @@ class CelulaHorario extends StatelessWidget {
                         child: Icon(Icons.add, color: IfprColors.cinzaClaro),
                       )
                     : ordenadas.length == 1 && !dividida
-                    ? _arrastavel(ordenadas.first)
+                    ? _arrastavel(ordenadas.first, comGrupo: false)
                     : Row(
                         children: [
                           if (dividida) ...[
@@ -83,7 +83,9 @@ class CelulaHorario extends StatelessWidget {
                           ],
                           for (var i = 0; i < ordenadas.length; i++) ...[
                             if (i > 0) _divisoria(),
-                            Expanded(child: _arrastavel(ordenadas[i])),
+                            Expanded(
+                              child: _arrastavel(ordenadas[i], comGrupo: true),
+                            ),
                           ],
                         ],
                       ),
@@ -95,13 +97,13 @@ class CelulaHorario extends StatelessWidget {
     );
   }
 
-  Widget _divisoria() => Container(
-    width: 1,
-    color: IfprColors.verde.withValues(alpha: 0.35),
-  );
+  Widget _divisoria() =>
+      Container(width: 1, color: IfprColors.verde.withValues(alpha: 0.35));
 
-  Widget _arrastavel(Aula aula) {
-    final conteudo = _conteudoAula(aula);
+  /// [comGrupo]: mostra "G1"/"G2" só quando a turma está dividida nesse
+  /// horário; aula da turma inteira não leva rótulo de grupo (igual ao PDF).
+  Widget _arrastavel(Aula aula, {required bool comGrupo}) {
+    final conteudo = _conteudoAula(aula, comGrupo: comGrupo);
     if (aoSoltar == null) return conteudo;
 
     return Draggable<Aula>(
@@ -118,7 +120,7 @@ class CelulaHorario extends StatelessWidget {
     );
   }
 
-  Widget _conteudoAula(Aula aula) {
+  Widget _conteudoAula(Aula aula, {required bool comGrupo}) {
     final nomeMateria = materias[aula.idMateria]?.nome;
     final nomeProfessor = professores[aula.idProfessor]?.nome;
     final sala = aula.idSala == null ? null : salasPorId[aula.idSala!];
@@ -128,16 +130,17 @@ class CelulaHorario extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(
-            'G${aula.grupo}',
-            style: const TextStyle(
-              fontSize: 9,
-              fontWeight: FontWeight.w700,
-              color: IfprColors.verde,
+          if (comGrupo)
+            Text(
+              'G${aula.grupo}',
+              style: const TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+                color: IfprColors.verde,
+              ),
             ),
-          ),
           Text(
-            nomeMateria ?? 'Matéria',
+            nomeMateria ?? 'Componente',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
@@ -152,10 +155,7 @@ class CelulaHorario extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 10,
-              color: IfprColors.cinzaClaro,
-            ),
+            style: const TextStyle(fontSize: 10, color: IfprColors.cinzaClaro),
           ),
           if (sala != null)
             Text(

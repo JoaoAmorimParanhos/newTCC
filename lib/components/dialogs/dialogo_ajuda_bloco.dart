@@ -16,8 +16,8 @@ class BotaoAjudaBloco extends StatelessWidget {
         builder: (_) => const _DialogoAjuda(
           titulo: 'O que é "Bloco"?',
           texto:
-              'Bloco é quantas aulas da matéria acontecem uma atrás da '
-              'outra, no mesmo dia.\n\n'
+              'O bloco é a quantidade de aulas de um componente que '
+              'acontecem em sequência, no mesmo dia.\n\n'
               'Exemplo: Matemática com 4 aulas e Bloco 2 vira 2 dias com 2 '
               'aulas seguidas.',
           grade: _MiniGrade(
@@ -29,14 +29,16 @@ class BotaoAjudaBloco extends StatelessWidget {
               (2, 1): _Celula.inteira('Matemática'),
             },
           ),
-          nota: 'Na turma da Noite o Bloco vai até 4 (são 4 horários).',
+          nota:
+              'A turma da noite tem uma limitação de bloco de até 4, pois '
+              'são 4 horários.',
         ),
       ),
     );
   }
 }
 
-/// Botão (?) que explica o campo "Blocos" da aula geminada.
+/// Botão (?) que explica o campo "Blocos" da aula dividida.
 class BotaoAjudaBlocosGeminada extends StatelessWidget {
   const BotaoAjudaBlocosGeminada({super.key});
 
@@ -49,14 +51,14 @@ class BotaoAjudaBlocosGeminada extends StatelessWidget {
       onPressed: () => showDialog<void>(
         context: context,
         builder: (_) => const _DialogoAjuda(
-          titulo: 'O que é "Blocos" na aula geminada?',
+          titulo: 'O que é "Blocos" na aula dividida?',
           texto:
-              'Na aula geminada a turma se divide em 2 grupos ao mesmo tempo '
-              '(G1 numa matéria, G2 na outra). "Blocos" é em quantas partes '
+              'Na aula dividida a turma se divide em 2 grupos ao mesmo tempo '
+              '(G1 num componente, G2 no outro). "Blocos" é em quantas partes '
               'essas aulas são divididas ao longo da semana.\n\n'
               'Exemplo: ADS com 2 aulas e Programação com 4, em 2 blocos, '
-              'vira 2 dias com 2 horários cada. Quando uma matéria tem menos '
-              'aulas, o grupo dela fica livre no horário que sobra.',
+              'vira 2 dias com 2 horários cada. Quando um componente tem '
+              'menos aulas, o grupo dele fica livre no horário que sobra.',
           grade: _MiniGrade(
             linhas: 3,
             celulas: {

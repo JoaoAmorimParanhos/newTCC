@@ -61,8 +61,8 @@ void main() {
         'Manhã',
         'Tarde',
         'Noite',
-        'Manhã CT: Tarde',
-        'Tarde CT: Manhã',
+        'Manhã - CT: Tarde',
+        'Tarde - CT: Manhã',
       ]);
       // Cursos antigos continuam como contraturno.
       expect(PreferenciaPeriodo.fromDb('manha_tarde'), PreferenciaPeriodo.manhaTarde);
@@ -93,7 +93,7 @@ void main() {
       );
     });
 
-    test('Manhã CT: Tarde enche a manhã e o resto vai para a tarde', () {
+    test('Manhã - CT: Tarde enche a manhã e o resto vai para a tarde', () {
       final aulas = _gerar(
         curso(preferencia: PreferenciaPeriodo.manhaTarde),
         [carga(matematica.id, 6, bloco: 6), carga(ingles.id, 2, bloco: 2)],
@@ -160,7 +160,7 @@ void main() {
         [aula(dia: 0, periodo: 0, idMateria: ingles.id, idProfessor: bruno.id, grupo: 2)],
         cargas: [carga(ingles.id, 1)],
       );
-      expect(problemas, contains('Grupo 2 sem aula geminada em Seg 1º M (Inglês)'));
+      expect(problemas, contains('Grupo 2 sem aula dividida em Seg 1º M (Inglês)'));
     });
 
     test('par com mais aulas que a carga: aviso único e claro', () {
@@ -170,9 +170,9 @@ void main() {
         pares: [par(informatica.id, ingles.id, aulas: 3, blocos: 1)],
       );
       expect(
-        problemas.where((p) => p.startsWith('Aula geminada')),
-        ['Aula geminada Informática + Inglês pede mais aulas do que a carga '
-            'das matérias (ajuste na Página 1)'],
+        problemas.where((p) => p.startsWith('Aula dividida')),
+        ['Aula dividida Informática + Inglês pede mais aulas do que a carga '
+            'dos componentes (ajuste em Cadastros)'],
       );
     });
   });
@@ -351,10 +351,10 @@ void main() {
     }
 
     testWidgets('recusa fica no diálogo, sem perder a edição', (tester) async {
-      await abrir(tester, validar: (_) => 'Professor indisponível neste horário (Página 2).');
+      await abrir(tester, validar: (_) => 'Professor indisponível neste horário (Disponibilidade).');
       await tester.tap(find.text('Salvar'));
       await tester.pumpAndSettle();
-      expect(find.text('Professor indisponível neste horário (Página 2).'), findsOneWidget);
+      expect(find.text('Professor indisponível neste horário (Disponibilidade).'), findsOneWidget);
       expect(find.text('Editar'), findsOneWidget, reason: 'continua aberto');
     });
 

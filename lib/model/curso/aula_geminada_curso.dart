@@ -81,20 +81,6 @@ class AulaGeminadaCurso {
     return idMateria == idMateriaA ? quantidadeA : quantidadeB;
   }
 
-  /// O mesmo par com outra quantidade de aulas de [idMateria]. Os blocos
-  /// ficam iguais (só diminuem se passarem do novo total).
-  AulaGeminadaCurso comQuantidade(String idMateria, int quantidade) {
-    assert(contemMateria(idMateria), 'matéria fora do par');
-    return AulaGeminadaCurso(
-      idCurso: idCurso,
-      idMateriaA: idMateriaA,
-      idMateriaB: idMateriaB,
-      quantidadePeriodos: idMateria == idMateriaA ? quantidade : quantidadeA,
-      quantidadePeriodosB: idMateria == idMateriaB ? quantidade : quantidadeB,
-      quantidadeBlocos: quantidadeBlocos,
-    );
-  }
-
   /// Tamanho de cada bloco, o mais igual possível (5 em 2 blocos = [3, 2]).
   List<int> get tamanhosBlocos =>
       dividirEmBlocos(periodosOcupados, quantidadeBlocos);

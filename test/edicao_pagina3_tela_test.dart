@@ -116,7 +116,7 @@ void main() {
       await _abrirPagina3(tester, repo: repo);
 
       await _tocar(tester, _celula(0, 0));
-      expect(find.text('Nova aula — Seg 1º M · Grupo 1'), findsOneWidget);
+      expect(find.text('Nova aula — Seg 1º M'), findsOneWidget);
       await _escolher(tester, 'subject-', 'Matemática');
       await _escolher(tester, 'prof-', 'Carla');
       await _tocar(tester, find.text('Salvar'));
@@ -143,8 +143,7 @@ void main() {
       await _abrirPagina3(tester, repo: repo);
 
       await _tocar(tester, _celula(0, 0));
-      await _tocar(tester, find.text('Editar este grupo'));
-      expect(find.text('Editar — Seg 1º M · Grupo 1'), findsOneWidget);
+      expect(find.text('Editar — Seg 1º M'), findsOneWidget);
       await _escolher(tester, 'prof-', 'Diego');
       await _escolher(tester, 'room-', 'Laboratório de informática 1');
       await _tocar(tester, find.text('Salvar'));
@@ -155,7 +154,7 @@ void main() {
       expect(editada.idSala, lab1.id);
     });
 
-    testWidgets('editar a matéria de uma aula', (tester) async {
+    testWidgets('editar o componente de uma aula', (tester) async {
       final repo = RepositorioAulaFalso([
         aula(
           id: 'a1',
@@ -168,7 +167,6 @@ void main() {
       await _abrirPagina3(tester, repo: repo);
 
       await _tocar(tester, _celula(0, 0));
-      await _tocar(tester, find.text('Editar este grupo'));
       await _escolher(tester, 'subject-', 'Informática');
       await _escolher(tester, 'prof-', 'Ana');
       await _tocar(tester, find.text('Salvar'));
@@ -190,7 +188,6 @@ void main() {
       await _abrirPagina3(tester, repo: repo);
 
       await _tocar(tester, _celula(0, 0));
-      await _tocar(tester, find.text('Editar este grupo'));
       await _tocar(tester, find.text('Excluir'));
       await _tocar(tester, find.widgetWithText(FilledButton, 'Excluir'));
 
@@ -208,36 +205,88 @@ void main() {
       expect(repo.aulas, isEmpty);
     });
 
-    testWidgets('adicionar o 2º grupo de uma aula geminada', (tester) async {
-      final repo = RepositorioAulaFalso([
-        aula(
-          id: 'a1',
-          dia: 0,
-          periodo: 0,
-          idMateria: informatica.id,
-          idProfessor: ana.id,
-        ),
-      ]);
+    testWidgets('aula nova só oferece os componentes da carga do curso', (
+      tester,
+    ) async {
+      final repo = RepositorioAulaFalso();
       await _abrirPagina3(
         tester,
         repo: repo,
-        pares: [par(informatica.id, ingles.id, aulas: 2, blocos: 1)],
+        cargas: [carga(informatica.id, 4)],
       );
 
       await _tocar(tester, _celula(0, 0));
-      await _tocar(tester, find.text('Adicionar outro grupo'));
-      expect(find.text('Nova aula — Seg 1º M · Grupo 2'), findsOneWidget);
-      await _escolher(tester, 'subject-', 'Inglês');
-      await _escolher(tester, 'prof-', 'Bruno');
-      await _tocar(tester, find.text('Salvar'));
+      await _tocar(tester, _porPrefixo('subject-'));
 
-      expect(repo.aulas, hasLength(2));
-      final nova = repo.aulas.firstWhere((a) => a.id != 'a1');
-      expect(nova.idMateria, ingles.id);
-      expect(nova.grupo, 2);
+      expect(find.text('Informática'), findsWidgets);
+      expect(find.text('Matemática'), findsNothing);
+      expect(find.text('Inglês'), findsNothing);
     });
 
-    testWidgets('no outro grupo aparecem todas as matérias', (tester) async {
+    testWidgets('componente novo na carga (Cadastros) aparece e pode ser '
+        'adicionado na Página 3', (tester) async {
+      final repo = RepositorioAulaFalso();
+      final cargas = StreamController<List<CargaCursoMateria>>.broadcast();
+      addTearDown(cargas.close);
+      tester.view.physicalSize = const Size(1600, 2000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            provedorRepositorioAula.overrideWithValue(repo),
+            provedorCursos.overrideWith(
+              (ref) => Stream.value([curso(idSala: sala1.id)]),
+            ),
+            provedorCargasCurso.overrideWith((ref) => cargas.stream),
+            provedorAulasGeminadasCurso.overrideWith(
+              (ref) => Stream.value(const []),
+            ),
+            provedorMaterias.overrideWith((ref) => Stream.value(materiasPadrao)),
+            provedorProfessores.overrideWith(
+              (ref) => Stream.value(professoresPadrao),
+            ),
+            provedorProfessorMaterias.overrideWith(
+              (ref) => Stream.value(ligacoesPadrao),
+            ),
+            provedorIndisponibilidades.overrideWith(
+              (ref) => Stream.value(const []),
+            ),
+            provedorSalas.overrideWith((ref) => Stream.value(salasPadrao)),
+            provedorHorariosPeriodo.overrideWith(
+              (ref) => Stream.value(const []),
+            ),
+          ],
+          child: const MaterialApp(home: Page3()),
+        ),
+      );
+      cargas.add([carga(informatica.id, 4)]);
+      await _esperar(tester);
+      await _tocar(tester, find.text('Info 1'));
+
+      // Antes: Matemática não está na carga.
+      await _tocar(tester, _celula(0, 0));
+      await _tocar(tester, _porPrefixo('subject-'));
+      expect(find.text('Matemática'), findsNothing);
+      await tester.tapAt(const Offset(5, 5));
+      await _esperar(tester);
+      await _tocar(tester, find.text('Cancelar'));
+
+      // A Página 1 adiciona Matemática na carga (o stream avisa a Página 3).
+      cargas.add([carga(informatica.id, 4), carga(matematica.id, 2)]);
+      await _esperar(tester);
+
+      await _tocar(tester, _celula(0, 0));
+      await _escolher(tester, 'subject-', 'Matemática');
+      await _escolher(tester, 'prof-', 'Carla');
+      await _tocar(tester, find.text('Salvar'));
+
+      expect(repo.aulas.single.idMateria, matematica.id);
+    });
+
+    testWidgets('célula com um grupo abre a edição direto (sem adicionar '
+        'outro grupo)', (tester) async {
       final repo = RepositorioAulaFalso([
         aula(dia: 0, periodo: 0, idMateria: informatica.id, idProfessor: ana.id),
       ]);
@@ -248,11 +297,9 @@ void main() {
       );
 
       await _tocar(tester, _celula(0, 0));
-      await _tocar(tester, find.text('Adicionar outro grupo'));
-      await _tocar(tester, _porPrefixo('subject-'));
 
-      expect(find.text('Inglês'), findsWidgets);
-      expect(find.text('Matemática'), findsWidgets);
+      expect(find.text('Editar — Seg 1º M'), findsOneWidget);
+      expect(find.text('Adicionar outro grupo'), findsNothing);
     });
 
     testWidgets('com 2 grupos, pergunta qual editar', (tester) async {
@@ -278,9 +325,7 @@ void main() {
       expect(find.text('Editar — Seg 1º M · Grupo 2'), findsOneWidget);
     });
 
-    testWidgets('carga completa: a aula é criada e a carga sobe', (
-      tester,
-    ) async {
+    testWidgets('carga completa bloqueia a aula nova', (tester) async {
       final repo = RepositorioAulaFalso([
         aula(dia: 1, periodo: 0, idMateria: matematica.id, idProfessor: carla.id),
       ]);
@@ -295,9 +340,11 @@ void main() {
       await _escolher(tester, 'prof-', 'Diego');
       await _tocar(tester, find.text('Salvar'));
 
-      expect(repo.aulas, hasLength(2));
-      final cargaMatematica = repo.ultimoCadastro!.cargaDe(matematica.id)!;
-      expect(cargaMatematica.quantidadeAulas, 2);
+      expect(
+        find.text('Carga completa para este componente (1 aula(s)).'),
+        findsOneWidget,
+      );
+      expect(repo.aulas, hasLength(1), reason: 'nada foi criado');
     });
 
     testWidgets('não oferece professor ocupado em outra turma', (
@@ -389,7 +436,7 @@ void main() {
       expect((movida.indiceDia, movida.indicePeriodo), (2, 3));
     });
 
-    testWidgets('soltar numa célula ocupada é recusado com mensagem', (
+    testWidgets('soltar aula comum em cima de outra troca as duas de lugar', (
       tester,
     ) async {
       final repo = RepositorioAulaFalso([
@@ -405,11 +452,66 @@ void main() {
       );
 
       final mat = repo.aulas.firstWhere((a) => a.id == 'mat');
+      final inf = repo.aulas.firstWhere((a) => a.id == 'inf');
+      expect((mat.indiceDia, mat.indicePeriodo, mat.grupo), (2, 3, 1));
+      expect((inf.indiceDia, inf.indicePeriodo, inf.grupo), (0, 0, 1));
+    });
+
+    testWidgets('troca recusada se o professor não pode no outro horário', (
+      tester,
+    ) async {
+      final repo = RepositorioAulaFalso([
+        aula(id: 'mat', dia: 0, periodo: 0, idMateria: matematica.id, idProfessor: carla.id),
+        aula(id: 'inf', dia: 2, periodo: 3, idMateria: informatica.id, idProfessor: ana.id),
+        // A Carla já dá aula para a outra turma em Qua 4º M.
+        aula(
+          id: 'outra',
+          idCurso: '2',
+          dia: 2,
+          periodo: 3,
+          idMateria: matematica.id,
+          idProfessor: carla.id,
+        ),
+      ]);
+      await _abrirPagina3(
+        tester,
+        repo: repo,
+        cursos: [curso(), curso(id: '2', nome: 'Info 2')],
+      );
+
+      await arrastar(
+        tester,
+        textoNaCelula(0, 0, 'Matemática'),
+        _celula(2, 3),
+      );
+
+      final mat = repo.aulas.firstWhere((a) => a.id == 'mat');
       expect((mat.indiceDia, mat.indicePeriodo), (0, 0));
       expect(
-        find.textContaining('Não foi possível mover. Horário ocupado'),
+        find.textContaining('Não dá para trocar: Carla já está dando aula'),
         findsOneWidget,
       );
+    });
+
+    testWidgets('se a troca cair no meio, as duas voltam ao lugar', (
+      tester,
+    ) async {
+      final repo = RepositorioAulaFalso([
+        aula(id: 'mat', dia: 0, periodo: 0, idMateria: matematica.id, idProfessor: carla.id),
+        aula(id: 'inf', dia: 2, periodo: 3, idMateria: informatica.id, idProfessor: ana.id),
+      ])..falharTrocaNoMeio = true;
+      await _abrirPagina3(tester, repo: repo);
+
+      await arrastar(
+        tester,
+        textoNaCelula(0, 0, 'Matemática'),
+        _celula(2, 3),
+      );
+
+      final mat = repo.aulas.firstWhere((a) => a.id == 'mat');
+      final inf = repo.aulas.firstWhere((a) => a.id == 'inf');
+      expect((mat.indiceDia, mat.indicePeriodo, mat.grupo), (0, 0, 1));
+      expect((inf.indiceDia, inf.indicePeriodo, inf.grupo), (2, 3, 1));
     });
 
     testWidgets('aula geminada anda em conjunto (2º–5º, o 1º fica vazio)', (

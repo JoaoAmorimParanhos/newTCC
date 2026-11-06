@@ -220,7 +220,7 @@ void main() {
           [mat],
           indisponibilidades: [indisponivel(carla.id, dia: 2, periodo: 3)],
         ),
-        'Carla está indisponível em Qua 4º M (Página 2).',
+        'Carla está indisponível em Qua 4º M (Disponibilidade).',
       );
     });
 

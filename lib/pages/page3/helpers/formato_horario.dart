@@ -47,13 +47,31 @@ class MascaraHorarioFormatter extends TextInputFormatter {
     var antes = novo.text.substring(0, cursor).replaceAll(_naoDigito, '').length;
     final digitosAntigos = antigo.text.replaceAll(_naoDigito, '');
 
-    if (novo.text.length - antigo.text.length > 1) {
-      // Colou (ou trocou tudo de uma vez).
-      final colado = _lerColado(novo.text);
-      if (colado != null) {
-        digitos = colado;
-        antes = colado.length;
-      }
+    // Trecho que entrou no lugar do antigo (o que mudou entre os dois).
+    var prefixo = 0;
+    final menor = antigo.text.length < novo.text.length
+        ? antigo.text.length
+        : novo.text.length;
+    while (prefixo < menor && antigo.text[prefixo] == novo.text[prefixo]) {
+      prefixo++;
+    }
+    var sufixo = 0;
+    while (sufixo < menor - prefixo &&
+        antigo.text[antigo.text.length - 1 - sufixo] ==
+            novo.text[novo.text.length - 1 - sufixo]) {
+      sufixo++;
+    }
+    final inserido = novo.text.substring(prefixo, novo.text.length - sufixo);
+    // Digitar insere 1 caractere; mais que isso é colar. Se o colado tem
+    // um "H:MM", lê o campo inteiro como horário (funciona também colando
+    // por cima de um horário já preenchido, com texto mais curto).
+    final colado = inserido.length > 1 && _lerColado(inserido) != null
+        ? _lerColado(novo.text)
+        : null;
+
+    if (colado != null) {
+      digitos = colado;
+      antes = colado.length;
     } else if (novo.text.length < antigo.text.length &&
         digitos == digitosAntigos &&
         antes > 0) {
@@ -103,5 +121,8 @@ String? validarHorario(String texto) {
   final numeros = [for (var i = 1; i <= 4; i++) int.parse(m.group(i)!)];
   if (numeros[0] > 23 || numeros[2] > 23) return 'Hora vai até 23';
   if (numeros[1] > 59 || numeros[3] > 59) return 'Minuto vai até 59';
+  final inicio = numeros[0] * 60 + numeros[1];
+  final fim = numeros[2] * 60 + numeros[3];
+  if (fim <= inicio) return 'O fim deve ser depois do início';
   return null;
 }

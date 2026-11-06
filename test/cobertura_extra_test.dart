@@ -264,7 +264,7 @@ void main() {
       ]);
     });
 
-    test('valor desconhecido no banco vira Manhã CT: Tarde', () {
+    test('valor desconhecido no banco vira Manhã - CT: Tarde', () {
       expect(PreferenciaPeriodo.fromDb('qualquer'), PreferenciaPeriodo.manhaTarde);
       expect(PreferenciaPeriodo.fromDb(null), PreferenciaPeriodo.manhaTarde);
     });

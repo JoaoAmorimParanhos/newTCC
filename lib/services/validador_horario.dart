@@ -47,7 +47,7 @@ class ValidadorHorario {
     final courseAulas = todasAulas.where((a) => a.idCurso == idCurso).toList();
 
     for (final load in cargas.where((l) => l.idCurso == idCurso)) {
-      final nomeMateria = subjectById[load.idMateria] ?? 'Matéria';
+      final nomeMateria = subjectById[load.idMateria] ?? 'Componente';
       final scheduled = courseAulas
           .where((a) => a.idMateria == load.idMateria)
           .length;
@@ -68,7 +68,7 @@ class ValidadorHorario {
       if (entry.value.length > limiteGrupos) {
         problemas.add(
           entry.value.length > 1 && limiteGrupos == 1
-              ? '2 grupos em ${rotuloCelula(entry.key)} sem aula geminada'
+              ? '2 grupos em ${rotuloCelula(entry.key)} sem aula dividida'
               : 'Mais de $limiteGrupos grupos em ${rotuloCelula(entry.key)}',
         );
       }
@@ -79,7 +79,7 @@ class ValidadorHorario {
             idMateriaB: entry.value.last.idMateria,
             aulasGeminadas: aulasGeminadas,
           )) {
-        problemas.add('Par não geminado em ${rotuloCelula(entry.key)}');
+        problemas.add('Par sem aula dividida cadastrada em ${rotuloCelula(entry.key)}');
       }
     }
 
@@ -99,12 +99,12 @@ class ValidadorHorario {
 
     // Quantos horários cada par realmente ocupa junto vs. o configurado.
     for (final par in paresDoCurso) {
-      final nomeA = subjectById[par.idMateriaA] ?? 'Matéria';
-      final nomeB = subjectById[par.idMateriaB] ?? 'Matéria';
+      final nomeA = subjectById[par.idMateriaA] ?? 'Componente';
+      final nomeB = subjectById[par.idMateriaB] ?? 'Componente';
       if (passaDaCarga(par)) {
         problemas.add(
-          'Aula geminada $nomeA + $nomeB pede mais aulas do que a carga '
-          'das matérias (ajuste na Página 1)',
+          'Aula dividida $nomeA + $nomeB pede mais aulas do que a carga '
+          'dos componentes (ajuste em Cadastros)',
         );
         continue;
       }
@@ -117,7 +117,7 @@ class ValidadorHorario {
           .length;
       if (juntas != par.juntas) {
         problemas.add(
-          'Aula geminada $nomeA + $nomeB: '
+          'Aula dividida $nomeA + $nomeB: '
           '$juntas/${par.juntas} aulas juntas',
         );
       }
@@ -144,12 +144,12 @@ class ValidadorHorario {
           )
           .length;
       if (soMaior == entry.value) continue;
-      final nomeMaior = subjectById[maior] ?? 'Matéria';
+      final nomeMaior = subjectById[maior] ?? 'Componente';
       final pares = paresDaMaior[maior]!;
       final titulo = pares.length == 1
-          ? 'Aula geminada ${subjectById[pares.single.idMateriaA] ?? 'Matéria'}'
-                ' + ${subjectById[pares.single.idMateriaB] ?? 'Matéria'}'
-          : 'Aulas geminadas com $nomeMaior';
+          ? 'Aula dividida ${subjectById[pares.single.idMateriaA] ?? 'Componente'}'
+                ' + ${subjectById[pares.single.idMateriaB] ?? 'Componente'}'
+          : 'Aulas divididas com $nomeMaior';
       problemas.add(
         '$titulo: $soMaior/${entry.value} aulas só de $nomeMaior '
         '(grupo 1 livre)',
@@ -163,8 +163,8 @@ class ValidadorHorario {
       final idMateria = lista.single.idMateria;
       if (paresDoCurso.any((p) => p.contemMateria(idMateria))) continue;
       problemas.add(
-        'Grupo 2 sem aula geminada em ${rotuloCelula(entry.key)} '
-        '(${subjectById[idMateria] ?? 'Matéria'})',
+        'Grupo 2 sem aula dividida em ${rotuloCelula(entry.key)} '
+        '(${subjectById[idMateria] ?? 'Componente'})',
       );
     }
 
@@ -189,7 +189,7 @@ class ValidadorHorario {
           )) {
         problemas.add(
           '$nomeProfessor não está vinculado a '
-          '${subjectById[aula.idMateria] ?? 'Matéria'} '
+          '${subjectById[aula.idMateria] ?? 'Componente'} '
           '(${rotuloCelula(celula)})',
         );
       }

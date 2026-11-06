@@ -23,7 +23,7 @@ Future<_Abertura> _abrir(
             onPressed: () async {
               abertura.resultado = await mostrarDialogoFormularioMateria(
                 context,
-                titulo: 'Editar matéria',
+                titulo: 'Editar componente',
                 professores: professoresPadrao,
                 nomeInicial: nome,
                 idsProfessoresIniciais: idsIniciais,

@@ -72,8 +72,9 @@ void main() {
       expect(validarHorario('07:00 - 08:99'), 'Minuto vai até 59');
     });
 
-    test('não confere se faz sentido (fim antes do início é aceito)', () {
-      expect(validarHorario('08:00 - 07:50'), isNull);
+    test('fim antes do início (ou igual) é recusado', () {
+      expect(validarHorario('08:00 - 07:50'), 'O fim deve ser depois do início');
+      expect(validarHorario('08:00 - 08:00'), 'O fim deve ser depois do início');
     });
   });
 }

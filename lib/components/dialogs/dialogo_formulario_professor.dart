@@ -98,12 +98,12 @@ class _ProfessorFormDialogState extends State<_ProfessorFormDialog> {
             ),
             const SizedBox(height: 16),
             const Text(
-              'Matérias que leciona',
+              'Componentes que leciona',
               style: TextStyle(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
             if (widget.materias.isEmpty)
-              const Text('Nenhuma matéria cadastrada ainda.')
+              const Text('Nenhum componente cadastrado ainda.')
             else
               ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 280),

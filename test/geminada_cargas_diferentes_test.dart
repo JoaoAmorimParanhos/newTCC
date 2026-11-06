@@ -143,7 +143,7 @@ void main() {
       expect(
         _problemas(aulas),
         contains(
-          'Aula geminada Informática + Inglês: 1/2 aulas só de Inglês '
+          'Aula dividida Informática + Inglês: 1/2 aulas só de Inglês '
           '(grupo 1 livre)',
         ),
       );
@@ -232,16 +232,6 @@ void main() {
       (w) => w is CelulaHorario && w.celula == celula(dia, periodo),
     );
 
-    Finder porPrefixo(String prefixo) => find.byWidgetPredicate((w) {
-      final key = w.key;
-      return key is ValueKey<String> && key.value.startsWith(prefixo);
-    });
-
-    Future<void> escolher(WidgetTester tester, String campo, String opcao) async {
-      await tocar(tester, porPrefixo(campo));
-      await tocar(tester, find.text(opcao).last);
-    }
-
     Future<void> abrir(WidgetTester tester, RepositorioAulaFalso repo) async {
       tester.view.physicalSize = const Size(1600, 2400);
       tester.view.devicePixelRatio = 1;
@@ -284,6 +274,29 @@ void main() {
       await tocar(tester, find.text('Excluir'));
       await tocar(tester, find.widgetWithText(FilledButton, 'Excluir'));
     }
+
+    testWidgets('rótulo G1/G2 só aparece quando a turma está dividida', (
+      tester,
+    ) async {
+      await abrir(
+        tester,
+        RepositorioAulaFalso([
+          ..._conjuntoSeg(),
+          // Aula da turma inteira em Ter 1º M.
+          aula(id: 'm', dia: 1, periodo: 0, idMateria: matematica.id, idProfessor: carla.id),
+        ]),
+      );
+      Finder na(int dia, int periodo, String texto) => find.descendant(
+        of: celulaGrade(dia, periodo),
+        matching: find.text(texto),
+      );
+
+      expect(na(1, 0, 'Matemática'), findsOneWidget);
+      expect(na(1, 0, 'G1'), findsNothing, reason: 'turma inteira');
+      expect(na(0, 0, 'G1'), findsOneWidget, reason: 'dois grupos');
+      expect(na(0, 0, 'G2'), findsOneWidget);
+      expect(na(0, 2, 'G2'), findsOneWidget, reason: 'G1 livre ao lado');
+    });
 
     testWidgets('horário só com o G2 mostra o G1 livre', (tester) async {
       await abrir(tester, RepositorioAulaFalso(_conjuntoSeg()));
@@ -332,34 +345,34 @@ void main() {
 
       // Seg 3º M já tem só o G2 (Inglês) com o G1 livre.
       await tocar(tester, celulaGrade(0, 2));
-      await tocar(tester, find.text('Editar este grupo'));
       await tocar(tester, find.text('Excluir'));
       await tocar(tester, find.widgetWithText(FilledButton, 'Excluir'));
 
       expect(aulasNaCelula(repo.aulas, '1', celula(0, 2)), isEmpty);
     });
 
-    testWidgets('clicar no horário com G1 livre deixa adicionar o outro grupo', (
-      tester,
-    ) async {
-      // Informática ainda tem carga livre (1 de 2 usada).
+    testWidgets('horário com G1 livre abre a edição direto (sem adicionar '
+        'outro grupo)', (tester) async {
       final repo = RepositorioAulaFalso(
         _conjuntoSeg()..removeWhere((a) => a.id == 'i1'),
       );
       await abrir(tester, repo);
 
       await tocar(tester, celulaGrade(0, 2));
-      await tocar(tester, find.text('Adicionar outro grupo'));
-      expect(find.text('Nova aula — Seg 3º M · Grupo 1'), findsOneWidget);
-      await escolher(tester, 'subject-', 'Informática');
-      await escolher(tester, 'prof-', 'Ana');
-      await tocar(tester, find.text('Salvar'));
+      expect(find.text('Adicionar outro grupo'), findsNothing);
+      expect(find.text('Editar — Seg 3º M · Grupo 2'), findsOneWidget);
+    });
 
-      final naCelula = aulasNaCelula(repo.aulas, '1', celula(0, 2));
-      expect(naCelula.map((a) => (a.grupo, a.idMateria)), [
-        (1, informatica.id),
-        (2, ingles.id),
-      ]);
+    testWidgets('excluir uma aula da aula dividida não muda a carga: '
+        'aparece "Faltam"', (tester) async {
+      final repo = RepositorioAulaFalso(_conjuntoSeg());
+      await abrir(tester, repo);
+
+      await tocar(tester, celulaGrade(0, 0));
+      await excluirGrupo(tester, 'Grupo 1 — Informática');
+
+      expect(repo.aulas.where((a) => a.idMateria == informatica.id), hasLength(1));
+      expect(find.textContaining('Faltam 1 aula(s) de Informática'), findsWidgets);
     });
   });
 

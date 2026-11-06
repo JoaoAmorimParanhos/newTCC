@@ -99,12 +99,14 @@ class GeradorHorario {
       (soma, l) => soma + l.quantidadeAulas,
     );
 
+    // Curso ainda sem carga (ex.: acabou de ser criado): não há o que
+    // gerar e não é falha; a Página 3 já mostra "Sem carga definida".
     if (cargasCurso.isEmpty) {
       return const ResultadoGeracao(
         novasAulas: [],
         totalAlocado: 0,
         totalNecessario: 0,
-        falhas: ['Curso sem carga de matérias definida.'],
+        falhas: [],
       );
     }
 
@@ -123,7 +125,7 @@ class GeradorHorario {
     });
 
     String rotulo(String idMateria) =>
-        nomesMaterias[idMateria] ?? 'matéria $idMateria';
+        nomesMaterias[idMateria] ?? 'componente $idMateria';
 
     _alocarGeminadas(
       curso: curso,
@@ -170,46 +172,53 @@ class GeradorHorario {
       );
       final fasesPeriodo = _fasesPeriodo(curso.preferenciaPeriodo);
 
-      for (final tamanhoBloco in blocos) {
-        // 1ª tentativa: um bloco da matéria por dia (espalha na semana).
-        // 2ª tentativa: aceita repetir o dia quando a carga não cabe em 5 dias.
-        var alocado = false;
-        for (final permitirMesmoDia in const [false, true]) {
-          if (alocado) break;
-
-          for (final faixaPeriodos in fasesPeriodo) {
-            if (alocado) break;
-
-            for (
-              var dia = 0;
-              dia < GradeHoraria.dias.length && !alocado;
-              dia++
-            ) {
-              for (final periodoInicio in _periodosInicio(
-                faixaPeriodos,
-                tamanhoBloco,
-              )) {
-                if (_tentarColocarBloco(
-                  idCurso: idCurso,
-                  idMateria: carga.idMateria,
-                  dia: dia,
-                  periodoInicio: periodoInicio,
-                  tamanhoBloco: tamanhoBloco,
-                  idSala: curso.idSala,
-                  professoresMateria: professoresMateria,
-                  indisponibilidades: indisponibilidades,
-                  trabalhando: trabalhando,
-                  novasAulas: novasAulas,
-                  permitirMesmoDia: permitirMesmoDia,
-                )) {
-                  alocado = true;
-                  restante -= tamanhoBloco;
-                  break;
-                }
-              }
-            }
-          }
+      // Bloco que não cabe em lugar nenhum é dividido em blocos menores
+      // (ex.: 4 → 2 + 2) antes de desistir; avisa quantas aulas ficaram
+      // assim, porque o bloco pedido na Página 1 não foi respeitado.
+      final fila = [for (final b in blocos) (tamanho: b, dividido: false)];
+      var emBlocosMenores = 0;
+      while (fila.isNotEmpty) {
+        final (tamanho: tamanhoBloco, dividido: dividido) = fila.removeAt(0);
+        // Prefere o professor que já dá este componente para a turma, para
+        // não trocar de professor a cada bloco.
+        final preferidos = _professoresJaUsados(
+          trabalhando,
+          idCurso,
+          carga.idMateria,
+          professoresMateria,
+        );
+        final alocado = _colocarBlocoComum(
+          idCurso: idCurso,
+          idMateria: carga.idMateria,
+          tamanhoBloco: tamanhoBloco,
+          idSala: curso.idSala,
+          fasesPeriodo: fasesPeriodo,
+          listasProfessores: [
+            if (preferidos.isNotEmpty &&
+                preferidos.length < professoresMateria.length)
+              preferidos,
+            professoresMateria,
+          ],
+          indisponibilidades: indisponibilidades,
+          trabalhando: trabalhando,
+          novasAulas: novasAulas,
+        );
+        if (alocado) {
+          restante -= tamanhoBloco;
+          if (dividido) emBlocosMenores += tamanhoBloco;
+        } else if (tamanhoBloco > 1) {
+          final metade = (tamanhoBloco + 1) ~/ 2;
+          fila.insertAll(0, [
+            (tamanho: metade, dividido: true),
+            (tamanho: tamanhoBloco - metade, dividido: true),
+          ]);
         }
+      }
+      if (emBlocosMenores > 0) {
+        falhas.add(
+          '${rotulo(carga.idMateria)}: $emBlocosMenores aula(s) ficaram em '
+          'blocos menores que ${blocos.first} (o bloco inteiro não coube).',
+        );
       }
 
       if (restante > 0) {
@@ -262,6 +271,67 @@ class GeradorHorario {
     }
   }
 
+  /// Professores (da lista [candidatos]) que já dão [idMateria] para a turma.
+  List<Professor> _professoresJaUsados(
+    List<Aula> trabalhando,
+    String idCurso,
+    String idMateria,
+    List<Professor> candidatos,
+  ) {
+    final ids = {
+      for (final a in trabalhando)
+        if (a.idCurso == idCurso && a.idMateria == idMateria) a.idProfessor,
+    };
+    return candidatos.where((p) => ids.contains(p.id)).toList();
+  }
+
+  /// Procura lugar para um bloco de aula comum (turma inteira).
+  ///
+  /// Ordem de preferência: um bloco do componente por dia; depois, cada
+  /// lista de [listasProfessores] (a 1ª é a dos professores preferidos);
+  /// só então aceita repetir o dia.
+  bool _colocarBlocoComum({
+    required String idCurso,
+    required String idMateria,
+    required int tamanhoBloco,
+    required String? idSala,
+    required List<List<int>> fasesPeriodo,
+    required List<List<Professor>> listasProfessores,
+    required List<IndisponibilidadeProfessor> indisponibilidades,
+    required List<Aula> trabalhando,
+    required List<Aula> novasAulas,
+  }) {
+    for (final permitirMesmoDia in const [false, true]) {
+      for (final professoresMateria in listasProfessores) {
+        for (final faixaPeriodos in fasesPeriodo) {
+          for (var dia = 0; dia < GradeHoraria.dias.length; dia++) {
+            for (final periodoInicio in _periodosInicio(
+              faixaPeriodos,
+              tamanhoBloco,
+            )) {
+              if (_tentarColocarBloco(
+                idCurso: idCurso,
+                idMateria: idMateria,
+                dia: dia,
+                periodoInicio: periodoInicio,
+                tamanhoBloco: tamanhoBloco,
+                idSala: idSala,
+                professoresMateria: professoresMateria,
+                indisponibilidades: indisponibilidades,
+                trabalhando: trabalhando,
+                novasAulas: novasAulas,
+                permitirMesmoDia: permitirMesmoDia,
+              )) {
+                return true;
+              }
+            }
+          }
+        }
+      }
+    }
+    return false;
+  }
+
   void _alocarGeminadas({
     required Curso curso,
     required List<CargaCursoMateria> cargasCurso,
@@ -303,7 +373,7 @@ class GeradorHorario {
       final professoresB = professoresDa(par.idMateriaB);
       if (professoresA.isEmpty || professoresB.isEmpty) {
         falhas.add(
-          'Aula geminada de $nomeA e $nomeB: falta professor em uma das matérias.',
+          'Aula dividida de $nomeA e $nomeB: falta professor em um dos componentes.',
         );
         continue;
       }
@@ -312,7 +382,7 @@ class GeradorHorario {
       );
       if (!temProfessoresDiferentes) {
         falhas.add(
-          'Aula geminada de $nomeA e $nomeB precisa de dois professores diferentes.',
+          'Aula dividida de $nomeA e $nomeB precisa de dois professores diferentes.',
         );
         continue;
       }
@@ -325,7 +395,7 @@ class GeradorHorario {
         final nome = rotulo(idMateria);
         if (livre < pedido) {
           falhas.add(
-            'Aula geminada de $nomeA e $nomeB pede $pedido aula(s) de '
+            'Aula dividida de $nomeA e $nomeB pede $pedido aula(s) de '
             '$nome, mas a carga só comporta ${livre < 0 ? 0 : livre}.',
           );
         }
@@ -364,27 +434,52 @@ class GeradorHorario {
       final tamanhos = cabe.tamanhosBlocos;
       final juntas = cabe.juntasPorBloco;
       for (var i = 0; i < tamanhos.length; i++) {
-        if (!_tentarColocarBlocoPar(
-          curso: curso,
-          idMateriaG1: idG1,
-          idMateriaG2: idG2,
-          tamanhoBloco: tamanhos[i],
-          juntasNoBloco: juntas[i],
-          professoresG1: professoresG1,
-          professoresG2: professoresG2,
-          indisponibilidades: indisponibilidades,
-          trabalhando: trabalhando,
-          novasAulas: novasAulas,
-        )) {
-          faltando += tamanhos[i];
-        }
+        bool tentar(List<Professor> g1, List<Professor> g2) =>
+            _tentarColocarBlocoPar(
+              curso: curso,
+              idMateriaG1: idG1,
+              idMateriaG2: idG2,
+              tamanhoBloco: tamanhos[i],
+              juntasNoBloco: juntas[i],
+              professoresG1: g1,
+              professoresG2: g2,
+              indisponibilidades: indisponibilidades,
+              trabalhando: trabalhando,
+              novasAulas: novasAulas,
+            );
+        // Depois do 1º bloco, tenta antes com os mesmos professores.
+        final usadosG1 = _professoresJaUsados(
+          trabalhando,
+          curso.id,
+          idG1,
+          professoresG1,
+        );
+        final usadosG2 = _professoresJaUsados(
+          trabalhando,
+          curso.id,
+          idG2,
+          professoresG2,
+        );
+        final temPreferencia =
+            (usadosG1.isNotEmpty || usadosG2.isNotEmpty) &&
+            (usadosG1.length < professoresG1.length ||
+                usadosG2.length < professoresG2.length);
+        final colocou =
+            (temPreferencia &&
+                tentar(
+                  usadosG1.isEmpty ? professoresG1 : usadosG1,
+                  usadosG2.isEmpty ? professoresG2 : usadosG2,
+                )) ||
+            tentar(professoresG1, professoresG2);
+        if (!colocou) faltando += tamanhos[i];
       }
       if (faltando > 0) {
         // As aulas que não couberam juntas entram depois como aulas comuns
-        // (turma inteira), se ainda houver espaço.
+        // (turma inteira), se ainda houver espaço; o que nem assim couber
+        // aparece como "Faltam".
         falhas.add(
-          'Não coube aula geminada de $nomeA e $nomeB em $faltando '
-          'horário(s); essas aulas foram colocadas como aulas comuns.',
+          'Não coube aula dividida de $nomeA e $nomeB em $faltando '
+          'horário(s); essas aulas serão tentadas como aulas comuns.',
         );
       }
     }
