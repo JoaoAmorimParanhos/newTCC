@@ -16,10 +16,13 @@ import 'apoio/dados.dart';
 import 'apoio/repositorio_aula_falso.dart';
 
 // Par do exemplo pedido: Informática com 2 aulas e Inglês com 4.
-// Ocupa 4 horários seguidos: 2 com os dois grupos e 2 só com Inglês no G2
-// (G1 livre).
+// Com Bloco 4 no Inglês (e 2 na Informática) ocupa 4 horários seguidos:
+// 2 com os dois grupos e 2 só com Inglês no G2 (G1 livre).
 final _par24 = par(informatica.id, ingles.id, aulas: 2, aulasB: 4, blocos: 1);
-final _cargas24 = [carga(informatica.id, 2), carga(ingles.id, 4)];
+final _cargas24 = [
+  carga(informatica.id, 2, bloco: 2),
+  carga(ingles.id, 4, bloco: 4),
+];
 
 List<Aula> _gerar(
   List<AulaGeminadaCurso> pares,
@@ -98,7 +101,7 @@ void main() {
     test('a matéria maior fica no G2 mesmo quando é a matéria A', () {
       final aulas = _gerar(
         [par(informatica.id, ingles.id, aulas: 4, aulasB: 2, blocos: 1)],
-        [carga(informatica.id, 4), carga(ingles.id, 2)],
+        [carga(informatica.id, 4, bloco: 4), carga(ingles.id, 2, bloco: 2)],
       );
       final sozinhas = aulasPorCelulaDoCurso(aulas, '1').values
           .where((l) => l.length == 1)
@@ -110,10 +113,10 @@ void main() {
       }
     });
 
-    test('em 2 blocos, cada bloco leva parte das aulas juntas', () {
+    test('com Bloco 2, cada bloco leva parte das aulas juntas', () {
       final aulas = _gerar(
-        [par(informatica.id, ingles.id, aulas: 2, aulasB: 4, blocos: 2)],
-        _cargas24,
+        [par(informatica.id, ingles.id, aulas: 2, aulasB: 4, blocos: 1)],
+        [carga(informatica.id, 2, bloco: 2), carga(ingles.id, 4, bloco: 2)],
       );
       final porCelula = aulasPorCelulaDoCurso(aulas, '1');
       final dias = porCelula.keys.map((c) => c.indiceDia).toSet();

@@ -71,10 +71,9 @@ void main() {
       });
       expect(par.quantidadePeriodos, 8);
       expect(par.quantidadeBlocos, 2);
-      expect(par.tamanhosBlocos, [4, 4]);
     });
 
-    test('sem a coluna de blocos, mantém aulas soltas (blocos = aulas)', () {
+    test('sem a coluna de blocos, guarda blocos = aulas', () {
       final par = AulaGeminadaCurso.fromJson({
         'id_curso': 1,
         'id_materia_a': 10,
@@ -82,7 +81,6 @@ void main() {
         'quantidade_periodos': 3,
       });
       expect(par.quantidadeBlocos, 3);
-      expect(par.tamanhosBlocos, [1, 1, 1]);
     });
 
     test('grava aulas e blocos', () {
@@ -117,22 +115,99 @@ void main() {
       expect(par.periodosSoMaior, 2);
       expect(par.idMateriaMaior, '11');
       expect(par.idMateriaMenor, '10');
-      expect(par.tamanhosBlocos, [4]);
-      expect(par.juntasPorBloco, [2]);
+      final formato = par.formato(
+        blocoDe: (_) => 4,
+        limiteTurno: 6,
+      );
+      expect(formato.tamanhos, [4]);
+      expect(formato.juntas, [2]);
+      expect(formato.horariosG1Livre, 2);
     });
 
-    test('cargas diferentes em 2 blocos dividem as juntas também', () {
+    test('formato: os blocos vêm do Bloco da carga de cada componente', () {
       final par = AulaGeminadaCurso(
         idCurso: '1',
         idMateriaA: '10',
         idMateriaB: '11',
         quantidadePeriodos: 1,
         quantidadePeriodosB: 4,
-        quantidadeBlocos: 2,
+        // Número antigo guardado no par: não muda o formato.
+        quantidadeBlocos: 4,
       );
-      expect(par.tamanhosBlocos, [2, 2]);
-      expect(par.juntasPorBloco, [1, 0]);
+      final formato = par.formato(blocoDe: (_) => 2, limiteTurno: 6);
+      expect(formato.tamanhos, [2, 2]);
+      expect(formato.juntas, [1, 0]);
     });
+  });
+
+  group('formatoAulaDividida', () {
+    FormatoAulaDividida formato(
+      int g1,
+      int g2, {
+      required int blocoG1,
+      required int blocoG2,
+      int turno = 6,
+    }) => formatoAulaDividida(
+      aulasG1: g1,
+      aulasG2: g2,
+      blocoG1: blocoG1,
+      blocoG2: blocoG2,
+      limiteTurno: turno,
+    );
+
+    test('mesmas aulas e Bloco 3 = 1 bloco de 3 (caso do banco)', () {
+      final f = formato(3, 3, blocoG1: 3, blocoG2: 3);
+      expect(f.tamanhos, [3]);
+      expect(f.juntas, [3]);
+      expect(f.horariosG1Livre, 0);
+    });
+
+    test('blocos como nas aulas comuns: cheios e o resto no fim', () {
+      final f = formato(6, 6, blocoG1: 4, blocoG2: 4);
+      expect(f.tamanhos, [4, 2]);
+      expect(f.juntas, [4, 2]);
+    });
+
+    test('mesmas aulas com Blocos diferentes: vale o menor', () {
+      expect(formato(4, 4, blocoG1: 2, blocoG2: 4).tamanhos, [2, 2]);
+      expect(formato(4, 4, blocoG1: 4, blocoG2: 2).tamanhos, [2, 2]);
+    });
+
+    test('o G1 não passa do Bloco dele; o G2 segue o dele', () {
+      // ADS 2 (Bloco 1) e Programação 4 (Bloco 4).
+      final f = formato(2, 4, blocoG1: 1, blocoG2: 4);
+      expect(f.tamanhos, [3, 1]);
+      expect(f.juntas, [1, 1]);
+    });
+
+    test('nenhum bloco passa do turno (noite: 4)', () {
+      final f = formato(8, 8, blocoG1: 6, blocoG2: 6, turno: 4);
+      expect(f.tamanhos, [4, 4]);
+    });
+
+    test('sem aulas, sem blocos', () {
+      expect(formato(0, 0, blocoG1: 2, blocoG2: 2).tamanhos, isEmpty);
+    });
+  });
+
+  group('blocosDeTamanho e espalharJuntas', () {
+    test('blocos cheios e o resto no fim', () {
+      expect(blocosDeTamanho(8, 4), [4, 4]);
+      expect(blocosDeTamanho(6, 4), [4, 2]);
+      expect(blocosDeTamanho(5, 2), [2, 2, 1]);
+      expect(blocosDeTamanho(2, 5), [2]);
+      expect(blocosDeTamanho(0, 2), isEmpty);
+    });
+
+    test('juntas repartidas por igual, sem passar do bloco', () {
+      expect(espalharJuntas(2, [2, 2]), [1, 1]);
+      expect(espalharJuntas(1, [2, 2]), [1, 0]);
+      expect(espalharJuntas(4, [4, 2]), [2, 2]);
+      expect(espalharJuntas(5, [4, 1]), [4, 1]);
+    });
+  });
+
+  group('AulaGeminadaCurso (limites)', () {
 
     test('ao ordenar o par pelo id, as quantidades trocam junto', () {
       final par = AulaGeminadaCurso(
@@ -204,24 +279,6 @@ void main() {
         ).quantidadeBlocos,
         1,
       );
-    });
-  });
-
-  group('dividirEmBlocos', () {
-    test('divide o mais igual possível, maiores primeiro', () {
-      expect(dividirEmBlocos(8, 2), [4, 4]);
-      expect(dividirEmBlocos(5, 2), [3, 2]);
-      expect(dividirEmBlocos(4, 4), [1, 1, 1, 1]);
-      expect(dividirEmBlocos(4, 1), [4]);
-      expect(dividirEmBlocos(7, 3), [3, 2, 2]);
-    });
-
-    test('blocos acima do total viram aulas soltas', () {
-      expect(dividirEmBlocos(2, 5), [1, 1]);
-    });
-
-    test('sem aulas, sem blocos', () {
-      expect(dividirEmBlocos(0, 2), isEmpty);
     });
   });
 

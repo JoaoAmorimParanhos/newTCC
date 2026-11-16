@@ -53,8 +53,9 @@ class AulaGeminadaCurso {
   final int quantidadeA;
   final int quantidadeB;
 
-  /// Em quantos blocos de aulas seguidas o par é dividido ao longo dos dias.
-  /// Ex.: 8 aulas em 2 blocos = 2 conjuntos de 4 aulas geminadas.
+  /// Em quantos blocos de aulas seguidas o par fica na grade. Não é escolhido
+  /// à parte: sai do Bloco da carga dos dois componentes (ver [formato]) e é
+  /// guardado só como registro; o gerador sempre recalcula.
   final int quantidadeBlocos;
 
   /// Compatível com o par de cargas iguais: aulas da matéria A.
@@ -81,20 +82,18 @@ class AulaGeminadaCurso {
     return idMateria == idMateriaA ? quantidadeA : quantidadeB;
   }
 
-  /// Tamanho de cada bloco, o mais igual possível (5 em 2 blocos = [3, 2]).
-  List<int> get tamanhosBlocos =>
-      dividirEmBlocos(periodosOcupados, quantidadeBlocos);
-
-  /// Quantos horários com os 2 grupos cada bloco tem, na mesma ordem de
-  /// [tamanhosBlocos]. Ex.: A = 2, B = 4 em 2 blocos → blocos [2, 2] e
-  /// juntas [1, 1].
-  List<int> get juntasPorBloco {
-    final tamanhos = tamanhosBlocos;
-    final partes = dividirEmPartes(juntas, tamanhos.length);
-    return [
-      for (var i = 0; i < tamanhos.length; i++) math.min(partes[i], tamanhos[i]),
-    ];
-  }
+  /// Como o par fica na grade, usando o Bloco da carga de cada componente
+  /// ([blocoDe]) e o tamanho do turno da turma ([limiteTurno]).
+  FormatoAulaDividida formato({
+    required int Function(String idMateria) blocoDe,
+    required int limiteTurno,
+  }) => formatoAulaDividida(
+    aulasG1: quantidadeDe(idMateriaMenor),
+    aulasG2: quantidadeDe(idMateriaMaior),
+    blocoG1: blocoDe(idMateriaMenor),
+    blocoG2: blocoDe(idMateriaMaior),
+    limiteTurno: limiteTurno,
+  );
 
   factory AulaGeminadaCurso.fromJson(Map<String, dynamic> json) {
     final periodosA = (json['quantidade_periodos'] as num?)?.toInt() ?? 1;
@@ -178,19 +177,87 @@ List<String> materiasGeminadasCom({
   return ids.toList();
 }
 
-/// Divide [total] aulas em [blocos] partes o mais iguais possível,
-/// maiores primeiro. Ex.: (8, 2) = [4, 4]; (5, 2) = [3, 2].
-List<int> dividirEmBlocos(int total, int blocos) {
-  if (total < 1) return const [];
-  final partes = blocos.clamp(1, total);
-  return dividirEmPartes(total, partes);
+/// Como a aula dividida fica na grade: blocos de horários seguidos e, em
+/// cada bloco, quantos horários têm os 2 grupos juntos (os primeiros); no
+/// resto do bloco só o G2 tem aula e o G1 fica livre.
+class FormatoAulaDividida {
+  const FormatoAulaDividida({required this.tamanhos, required this.juntas});
+
+  /// Horários seguidos de cada bloco. Ex.: [2, 2].
+  final List<int> tamanhos;
+
+  /// Horários com os 2 grupos em cada bloco, na ordem de [tamanhos].
+  final List<int> juntas;
+
+  int get quantidadeBlocos => tamanhos.length;
+
+  /// Horários em que o G1 fica livre (só o G2 tem aula).
+  int get horariosG1Livre {
+    var soma = 0;
+    for (var i = 0; i < tamanhos.length; i++) {
+      soma += tamanhos[i] - juntas[i];
+    }
+    return soma;
+  }
 }
 
-/// Como [dividirEmBlocos], mas sempre com [partes] itens (pode ter zeros).
-/// Ex.: (1, 2) = [1, 0].
-List<int> dividirEmPartes(int total, int partes) {
-  if (partes < 1) return const [];
-  final base = total ~/ partes;
-  final sobra = total % partes;
-  return [for (var i = 0; i < partes; i++) base + (i < sobra ? 1 : 0)];
+/// Monta a aula dividida com o mesmo "Bloco" das aulas comuns (aulas
+/// seguidas no mesmo dia, definido na carga de cada componente):
+/// - o componente do G2 (o de mais aulas) fica em blocos de [blocoG2]
+///   aulas seguidas, como numa aula comum;
+/// - nenhum bloco tem mais aulas do G1 do que o [blocoG1];
+/// - nenhum bloco passa do turno ([limiteTurno]; noite: 4).
+///
+/// Ex.: 3 + 3 com Bloco 3 = 1 bloco de 3; 2 + 4 com Bloco 2 = blocos [2, 2]
+/// com 1 horário junto em cada.
+FormatoAulaDividida formatoAulaDividida({
+  required int aulasG1,
+  required int aulasG2,
+  required int blocoG1,
+  required int blocoG2,
+  required int limiteTurno,
+}) {
+  final ocupados = math.max(aulasG1, aulasG2);
+  final juntas = math.min(aulasG1, aulasG2);
+  if (ocupados < 1) {
+    return const FormatoAulaDividida(tamanhos: [], juntas: []);
+  }
+  final maxJuntas = math.max(1, blocoG1);
+  // Começa no Bloco do G2 e diminui só se o G1 passaria do Bloco dele.
+  for (var tamanho = math.min(blocoG2, limiteTurno); ; tamanho--) {
+    final tamanhos = blocosDeTamanho(ocupados, tamanho);
+    final juntasPorBloco = espalharJuntas(juntas, tamanhos);
+    if (tamanho <= 1 || juntasPorBloco.every((j) => j <= maxJuntas)) {
+      return FormatoAulaDividida(tamanhos: tamanhos, juntas: juntasPorBloco);
+    }
+  }
+}
+
+/// Divide [total] aulas em blocos de [tamanho] e um bloco menor com o que
+/// sobrar — a mesma regra das aulas comuns. Ex.: (6, 4) = [4, 2];
+/// (6, 2) = [2, 2, 2].
+List<int> blocosDeTamanho(int total, int tamanho) {
+  if (total < 1) return const [];
+  final t = tamanho.clamp(1, total);
+  return [
+    for (var restante = total; restante > 0; restante -= t)
+      restante >= t ? t : restante,
+  ];
+}
+
+/// Reparte [juntas] horários entre os blocos de [tamanhos] o mais igual
+/// possível, sem passar do tamanho de cada bloco. Ex.: (2, [2, 2]) = [1, 1];
+/// (4, [4, 2]) = [2, 2].
+List<int> espalharJuntas(int juntas, List<int> tamanhos) {
+  final saida = List<int>.filled(tamanhos.length, 0);
+  for (var r = 0; r < juntas; r++) {
+    var escolhido = -1;
+    for (var i = 0; i < tamanhos.length; i++) {
+      if (saida[i] >= tamanhos[i]) continue;
+      if (escolhido < 0 || saida[i] < saida[escolhido]) escolhido = i;
+    }
+    if (escolhido < 0) break;
+    saida[escolhido]++;
+  }
+  return saida;
 }

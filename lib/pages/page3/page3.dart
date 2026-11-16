@@ -47,9 +47,7 @@ class _Page3State extends ConsumerState<Page3> {
 
   void _mostrarErro(Object e) => _mostrarMensagem('Erro: $e');
 
-  /// Roda [acao] e mostra a mensagem que ela devolver. A grade só trava
-  /// quando a ação chama `iniciarGravacao` (depois das confirmações), não
-  /// enquanto a pessoa ainda está decidindo num diálogo.
+
   Future<void> _executar(
     Future<String?> Function(VoidCallback iniciarGravacao) acao,
   ) async {
@@ -202,7 +200,7 @@ class _Page3State extends ConsumerState<Page3> {
     final ligacoesAsync = ref.watch(provedorProfessorMaterias);
     final indisponibilidadesAsync = ref.watch(provedorIndisponibilidades);
     final salasAsync = ref.watch(provedorSalas);
-    // Os horários são só rótulos: se a tabela falhar, a grade segue sem eles.
+
     final horarios = {
       for (final h in ref.watch(provedorHorariosPeriodo).valueOrNull ??
           const <HorarioPeriodo>[])

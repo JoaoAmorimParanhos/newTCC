@@ -40,7 +40,6 @@ class _LinhaAulaGeminada {
     this.idMateriaB,
     int quantidadePeriodos = 1,
     int? quantidadePeriodosB,
-    this.quantidadeBlocos = 1,
   }) : controladorPeriodos = TextEditingController(text: '$quantidadePeriodos'),
        // Vazio = mesma quantidade da matéria A.
        controladorPeriodosB = TextEditingController(
@@ -59,7 +58,6 @@ class _LinhaAulaGeminada {
 
   /// Aulas da matéria B (vazio = igual à A).
   final TextEditingController controladorPeriodosB;
-  int quantidadeBlocos;
 
   void dispose() {
     controladorPeriodos.dispose();
@@ -185,7 +183,6 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
             idMateriaB: par.idMateriaB,
             quantidadePeriodos: par.quantidadeA,
             quantidadePeriodosB: par.quantidadeB,
-            quantidadeBlocos: par.quantidadeBlocos,
           ),
         )
         .toList();
@@ -270,25 +267,60 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
     return count == null || count < 1 ? 1 : count;
   }
 
-  /// Horários ocupados pelo par: a matéria com mais aulas define.
-  int _aulasGeminada(_LinhaAulaGeminada row) {
-    final a = _aulasA(row);
-    final b = _aulasB(row);
-    return a > b ? a : b;
+  /// Bloco que o campo da carga mostra para o componente (1 se ele não
+  /// está na carga).
+  int _blocoNaCarga(String idMateria) {
+    for (final row in _linhas) {
+      if (row.idMateria == idMateria) return _valorBloco(row);
+    }
+    return 1;
   }
 
-  /// Menos blocos que isso deixaria um bloco maior que um turno.
-  int _minimoBlocosGeminada(_LinhaAulaGeminada row) {
-    final maximo = _preferenciaPeriodo.maxAulasPorBloco;
-    return (_aulasGeminada(row) + maximo - 1) ~/ maximo;
+  /// Como a aula dividida da linha vai ficar na grade, com o que está
+  /// digitado agora (null sem os dois componentes).
+  ({AulaGeminadaCurso par, FormatoAulaDividida formato})? _formatoGeminada(
+    _LinhaAulaGeminada row,
+  ) {
+    final idA = row.idMateriaA;
+    final idB = row.idMateriaB;
+    if (idA == null || idB == null || idA == idB) return null;
+    final par = AulaGeminadaCurso(
+      idCurso: widget.idCurso,
+      idMateriaA: idA,
+      idMateriaB: idB,
+      quantidadePeriodos: _aulasA(row),
+      quantidadePeriodosB: _aulasB(row),
+    );
+    return (
+      par: par,
+      formato: par.formato(
+        blocoDe: _blocoNaCarga,
+        limiteTurno: _preferenciaPeriodo.maxAulasPorBloco,
+      ),
+    );
   }
 
-  int _valorBlocosGeminada(_LinhaAulaGeminada row) {
-    final minimo = _minimoBlocosGeminada(row);
-    final maximo = _aulasGeminada(row);
-    if (row.quantidadeBlocos < minimo) return minimo;
-    if (row.quantidadeBlocos > maximo) return maximo;
-    return row.quantidadeBlocos;
+  String _nomeMateria(String id) =>
+      widget.materias.where((m) => m.id == id).firstOrNull?.nome ?? '?';
+
+  /// Ex.: "Na grade: 2 blocos de 2 aulas seguidas. G1: ADS · G2:
+  /// Programação. O G1 fica livre em 2 horário(s)."
+  String? _resumoGeminada(_LinhaAulaGeminada row) {
+    final calculo = _formatoGeminada(row);
+    if (calculo == null) return null;
+    final (:par, :formato) = calculo;
+    final t = formato.tamanhos;
+    final aulas = t.first == 1 ? 'aula' : 'aulas seguidas';
+    final blocos = t.length == 1
+        ? '1 bloco de ${t.first} $aulas'
+        : t.every((x) => x == t.first)
+        ? '${t.length} blocos de ${t.first} $aulas'
+        : '${t.length} blocos (${t.join(' + ')} aulas seguidas)';
+    final livre = formato.horariosG1Livre;
+    return 'Na grade: $blocos. '
+        'G1: ${_nomeMateria(par.idMateriaMenor)} · '
+        'G2: ${_nomeMateria(par.idMateriaMaior)}.'
+        '${livre > 0 ? ' O G1 fica livre em $livre horário(s).' : ''}';
   }
 
   Future<void> _enviar() async {
@@ -344,6 +376,9 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
     final cargaPorMateria = {
       for (final carga in cargas) carga.idMateria: carga.quantidadeAulas,
     };
+    final blocoPorMateria = {
+      for (final carga in cargas) carga.idMateria: carga.tamanhoBloco,
+    };
     final periodosPorMateria = <String, int>{};
     final aulasGeminadas = <AulaGeminadaCurso>[];
     final paresVistos = <String>{};
@@ -387,26 +422,6 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
         );
         return;
       }
-      final periodos = periodosA > periodosB ? periodosA : periodosB;
-      // O valor guardado pode estar fora da faixa (quantidade ou turno
-      // mudou depois); vale o que o campo mostra.
-      final blocos = _valorBlocosGeminada(row);
-      if (blocos < 1 || blocos > periodos) {
-        setState(
-          () => _errosDividida[i] =
-              'Blocos da aula dividida devem ir de 1 até a quantidade de aulas',
-        );
-        return;
-      }
-      if (dividirEmBlocos(periodos, blocos).first >
-          _preferenciaPeriodo.maxAulasPorBloco) {
-        setState(
-          () => _errosDividida[i] =
-              'Cada bloco da aula dividida pode ter no máximo '
-              '${_preferenciaPeriodo.maxAulasPorBloco} aulas (um turno)',
-        );
-        return;
-      }
       final cargaA = cargaPorMateria[idMateriaA] ?? 0;
       final cargaB = cargaPorMateria[idMateriaB] ?? 0;
       if (periodosA > cargaA || periodosB > cargaB) {
@@ -428,13 +443,26 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
       periodosPorMateria[idMateriaA] = usadoA;
       periodosPorMateria[idMateriaB] = usadoB;
 
+      // Os blocos saem do Bloco da carga (o mesmo das aulas comuns) e do
+      // turno; o número fica guardado só como registro.
+      final semBlocos = AulaGeminadaCurso(
+        idCurso: widget.idCurso,
+        idMateriaA: idMateriaA,
+        idMateriaB: idMateriaB,
+        quantidadePeriodos: periodosA,
+        quantidadePeriodosB: periodosB,
+      );
+      final formato = semBlocos.formato(
+        blocoDe: (idMateria) => blocoPorMateria[idMateria] ?? 1,
+        limiteTurno: _preferenciaPeriodo.maxAulasPorBloco,
+      );
       final par = AulaGeminadaCurso(
         idCurso: widget.idCurso,
         idMateriaA: idMateriaA,
         idMateriaB: idMateriaB,
         quantidadePeriodos: periodosA,
         quantidadePeriodosB: periodosB,
-        quantidadeBlocos: blocos,
+        quantidadeBlocos: formato.quantidadeBlocos,
       );
       if (!paresVistos.add(par.chave)) {
         setState(() => _errosDividida[i] = 'Par de aula dividida repetido');
@@ -485,8 +513,9 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
           const Text(
             'Qtd. de aulas: quantas aulas cada componente tem na aula '
             'dividida (a primeira é do Componente A e a segunda do B; vazia '
-            '= igual à do A). Blocos: em quantos conjuntos de aulas seguidas '
-            'elas são divididas ao longo dos dias.',
+            '= igual à do A). As aulas seguidas seguem o Bloco de cada '
+            'componente na carga, como nas aulas comuns. O G1 fica com o '
+            'componente de menos aulas.',
             style: TextStyle(fontSize: 12),
           ),
           const SizedBox(height: 8),
@@ -581,9 +610,7 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
                               inputFormatters: [
                                 FilteringTextInputFormatter.digitsOnly,
                               ],
-                              // Só redesenha: o Blocos escolhido fica guardado e
-                              // o campo mostra o valor que cabe (apagar o número
-                              // para digitar outro não perde a escolha).
+                              // Só redesenha: atualiza o resumo "Na grade".
                               onChanged: (_) => setState(() {}),
                               decoration: const InputDecoration(
                                 labelText: 'Qtd. de aulas',
@@ -601,9 +628,7 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
                               inputFormatters: [
                                 FilteringTextInputFormatter.digitsOnly,
                               ],
-                              // Só redesenha: o Blocos escolhido fica guardado e
-                              // o campo mostra o valor que cabe (apagar o número
-                              // para digitar outro não perde a escolha).
+                              // Só redesenha: atualiza o resumo "Na grade".
                               onChanged: (_) => setState(() {}),
                               decoration: const InputDecoration(
                                 labelText: 'Qtd. de aulas',
@@ -612,48 +637,19 @@ class _CourseFormDialogState extends State<_CourseFormDialog> {
                               ),
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: DropdownButtonFormField<int>(
-                              key: ValueKey(
-                                'gem-blocos-$i-'
-                                '${_linhasGeminadas[i].quantidadeBlocos}-'
-                                '${_aulasGeminada(_linhasGeminadas[i])}',
-                              ),
-                              initialValue: _valorBlocosGeminada(
-                                _linhasGeminadas[i],
-                              ),
-                              decoration: const InputDecoration(
-                                labelText: 'Blocos',
-                                isDense: true,
-                              ),
-                              items: [
-                                for (
-                                  var value = _minimoBlocosGeminada(
-                                    _linhasGeminadas[i],
-                                  );
-                                  value <= _aulasGeminada(_linhasGeminadas[i]);
-                                  value++
-                                )
-                                  DropdownMenuItem(
-                                    value: value,
-                                    child: Text('$value'),
-                                  ),
-                              ],
-                              onChanged: (value) {
-                                if (value != null) {
-                                  setState(
-                                    () => _linhasGeminadas[i].quantidadeBlocos =
-                                        value,
-                                  );
-                                }
-                              },
-                            ),
-                          ),
                           // Mesmo espaço do botão de remover da linha de cima.
                           const SizedBox(width: 48),
                         ],
                       ),
+                      if (_resumoGeminada(_linhasGeminadas[i]) case final resumo?)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            resumo,
+                            key: ValueKey('gem-resumo-$i'),
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
                       if (_errosDividida[i] != null)
                         _TextoErro(
                           _errosDividida[i]!,

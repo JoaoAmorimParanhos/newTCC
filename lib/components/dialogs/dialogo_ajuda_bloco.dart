@@ -38,7 +38,7 @@ class BotaoAjudaBloco extends StatelessWidget {
   }
 }
 
-/// Botão (?) que explica o campo "Blocos" da aula dividida.
+/// Botão (?) que explica como a aula dividida fica na grade.
 class BotaoAjudaBlocosGeminada extends StatelessWidget {
   const BotaoAjudaBlocosGeminada({super.key});
 
@@ -46,19 +46,20 @@ class BotaoAjudaBlocosGeminada extends StatelessWidget {
   Widget build(BuildContext context) {
     return IconButton(
       key: const ValueKey('ajuda-blocos-geminada'),
-      tooltip: 'O que é Blocos?',
+      tooltip: 'Como fica a aula dividida?',
       icon: const Icon(Icons.help_outline, color: IfprColors.verde),
       onPressed: () => showDialog<void>(
         context: context,
         builder: (_) => const _DialogoAjuda(
-          titulo: 'O que é "Blocos" na aula dividida?',
+          titulo: 'Como fica a aula dividida na grade?',
           texto:
               'Na aula dividida a turma se divide em 2 grupos ao mesmo tempo '
-              '(G1 num componente, G2 no outro). "Blocos" é em quantas partes '
-              'essas aulas são divididas ao longo da semana.\n\n'
-              'Exemplo: ADS com 2 aulas e Programação com 4, em 2 blocos, '
-              'vira 2 dias com 2 horários cada. Quando um componente tem '
-              'menos aulas, o grupo dele fica livre no horário que sobra.',
+              '(G1 no componente de menos aulas, G2 no outro). As aulas '
+              'seguidas usam o mesmo Bloco da carga das aulas comuns.\n\n'
+              'Exemplo: ADS com 2 aulas e Programação com 4, as duas com '
+              'Bloco 2, vira 2 dias com 2 horários seguidos. Quando um '
+              'componente tem menos aulas, o grupo dele fica livre no horário '
+              'que sobra.',
           grade: _MiniGrade(
             linhas: 3,
             celulas: {

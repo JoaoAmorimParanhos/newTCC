@@ -82,17 +82,25 @@ flutter test
 
 Eles cobrem o gerador (inclusive aulas divididas em blocos), o validador da tela de Horário, o formulário do curso e a edição da grade na tela de Horário. Os arquivos `geminada_cargas_diferentes_test.dart` (aula dividida com cargas diferentes: gerador, validador, exclusão e arraste), `noite_horarios_salas_test.dart` (turno da noite, PDF, horários dos períodos e tipos de sala) e `formato_horario_test.dart` (máscara e validação do horário) cobrem as partes mais novas. As correções mais recentes estão em `correcoes_revisao_logica_test.dart`, `troca_busca_erros_test.dart`, `textos_e_cabecalho_test.dart`, `coluna_curso_test.dart` e `manual_test.dart` (manual e nomes das páginas).
 
-O aplicativo já aponta para o projeto Supabase usado em produção. As tabelas principais são `tb_professor`, `tb_materia`, `tb_sala`, `tb_tipo_sala`, `tb_curso`, `tb_curso_materia`, `tb_professor_materia`, `tb_professor_indisponibilidade`, `tb_curso_aula_geminada`, `tb_horario_periodo` e `tb_aula`.
+O aplicativo já aponta para o projeto Supabase usado em produção (PostgreSQL 17). As tabelas principais são `tb_professor`, `tb_materia`, `tb_sala`, `tb_tipo_sala`, `tb_curso`, `tb_curso_materia`, `tb_professor_materia`, `tb_professor_indisponibilidade`, `tb_curso_aula_geminada`, `tb_horario_periodo` e `tb_aula`.
 
-Para preparar o banco, rode no SQL Editor do Supabase, nesta ordem:
+**Criar o banco do zero:** num projeto novo do Supabase, rode no SQL Editor:
 
-1. `supabase_aulas_geminadas.sql`
-2. `supabase_noite_tipos_horarios.sql`
-3. `supabase_turnos_transacoes.sql` — a última parte dele (`alter publication supabase_realtime ...`) só deve ser rodada depois de publicar a versão nova do app.
+1. `supabase_estrutura_completa.sql` — todas as tabelas, regras, funções, permissões e o tempo real;
+2. `supabase_dados_exemplo.sql` (opcional) — os 7 cursos de exemplo (Informática 1 a 4 e Mecânica 1 a 3), componentes, professores, salas e horários dos períodos.
 
-O terceiro script cria as funções `substituir_aulas` (usada pelo "Gerar") e `salvar_carga_e_pares` (salva a carga e os pares do curso e apaga as aulas de componentes que saíram da carga), e faz o banco apagar em cascata: excluir componente, professor ou curso apaga as aulas ligadas a eles, e excluir uma sala deixa as aulas sem sala. Enquanto a parte do tempo real não for rodada, as telas se atualizam depois de cada ação feita no próprio app, mas não percebem mudanças feitas em outra aba ou por outra pessoa.
+Depois troque a `url` e a `publishableKey` em `lib/main.dart` pelas do projeto novo. As funções do banco são `substituir_aulas` (usada pelo "Gerar": troca a grade inteira numa transação) e `salvar_carga_e_pares` (salva a carga e os pares do curso e apaga as aulas de componentes que saíram da carga). O banco apaga em cascata: excluir componente, professor ou curso apaga as aulas ligadas a eles, e excluir uma sala deixa as aulas e os cursos sem sala.
 
-O arquivo `supabase_aula_e_cadastro.sql` não é mais usado (era de uma versão em que a tela de Horário mudava a carga) e não precisa ser rodado.
+Os scripts antigos (`supabase_aulas_geminadas.sql`, `supabase_noite_tipos_horarios.sql`, `supabase_turnos_transacoes.sql`) só alteravam um banco já existente e ficam como histórico. O `supabase_aula_e_cadastro.sql` não é mais usado.
+
+**Versão compilada para rodar sem servidor externo:**
+
+```bash
+flutter build web --release --no-web-resources-cdn
+dart compile exe tool/servidor_local.dart -o "Abrir sistema.exe"
+```
+
+Coloque o `Abrir sistema.exe` ao lado da pasta `build/web` renomeada para `web`. Dois cliques no `.exe` abrem o sistema em `http://localhost:8080` (o `tool/servidor_local.dart` serve a pasta e abre o navegador). A opção `--no-web-resources-cdn` faz o build levar junto os arquivos do Flutter que normalmente viriam de um CDN.
 
 ## Publicação
 

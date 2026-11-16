@@ -136,8 +136,10 @@ const List<SecaoManual> secoesManual = [
       'Escolha o **Componente A**, o **Componente B** e a **Qtd. de aulas** '
           'de cada um. Se o campo do B ficar vazio, ele usa a mesma '
           'quantidade do A.',
-      '**Blocos** é em quantas partes essas aulas são divididas na semana. '
-          'O **?** ao lado do título mostra um exemplo.',
+      'As aulas seguidas usam o **Bloco** de cada componente na carga, como '
+          'nas aulas comuns. Embaixo da linha aparece **Na grade:** com os '
+          'blocos e quem fica no G1 e no G2. O **?** ao lado do título mostra '
+          'um exemplo.',
     ],
     dica:
         'Quando um componente tem menos aulas que o outro, aparece '

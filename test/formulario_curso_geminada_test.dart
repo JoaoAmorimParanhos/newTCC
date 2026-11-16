@@ -59,27 +59,11 @@ Finder _porPrefixo(String prefixo) => find.byWidgetPredicate((w) {
   return key is ValueKey<String> && key.value.startsWith(prefixo);
 });
 
-int? _blocosSelecionados(WidgetTester tester, int linha) => tester
-    .widget<DropdownButtonFormField<int>>(_porPrefixo('gem-blocos-$linha-'))
-    .initialValue;
-
-/// Abre o campo Blocos da linha e lê as opções do menu (fora dos botões).
-Future<List<String>> _opcoesBlocos(WidgetTester tester, int linha) async {
-  await tester.tap(_porPrefixo('gem-blocos-$linha-'));
-  await tester.pumpAndSettle();
-  final opcoes = tester
-      .elementList(find.byType(DropdownMenuItem<int>))
-      .where(
-        (e) =>
-            e.findAncestorWidgetOfExactType<DropdownButtonFormField<int>>() ==
-            null,
-      )
-      .map((e) => '${(e.widget as DropdownMenuItem<int>).value}')
-      .toList();
-  // Fecha o menu tocando fora dele.
-  await tester.tapAt(const Offset(5, 5));
-  await tester.pumpAndSettle();
-  return opcoes;
+/// Texto "Na grade: ..." embaixo da linha da aula dividida.
+String? _resumo(WidgetTester tester, int linha) {
+  final achado = find.byKey(ValueKey('gem-resumo-$linha'));
+  if (achado.evaluate().isEmpty) return null;
+  return tester.widget<Text>(achado).data;
 }
 
 Future<void> _adicionarPar(WidgetTester tester) async {
@@ -87,8 +71,13 @@ Future<void> _adicionarPar(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> _escolherBlocos(WidgetTester tester, int linha, int valor) async {
-  await tester.tap(_porPrefixo('gem-blocos-$linha-'));
+/// Escolhe o Bloco da linha [linha] da carga.
+Future<void> _escolherBlocoCarga(
+  WidgetTester tester,
+  int linha,
+  int valor,
+) async {
+  await tester.tap(_porPrefixo('block-$linha-'));
   await tester.pumpAndSettle();
   await tester.tap(find.text('$valor').last);
   await tester.pumpAndSettle();
@@ -110,11 +99,15 @@ Future<void> _salvar(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-final _cargas8 = [carga(informatica.id, 8), carga(ingles.id, 8)];
+// Bloco 4 na carga: a aula dividida fica em blocos de 4 aulas seguidas.
+final _cargas8 = [
+  carga(informatica.id, 8, bloco: 4),
+  carga(ingles.id, 8, bloco: 4),
+];
 
 void main() {
   group('Formulário do curso: aula geminada', () {
-    testWidgets('editar mostra aulas e blocos já cadastrados', (tester) async {
+    testWidgets('editar mostra as aulas e como fica na grade', (tester) async {
       await _abrir(
         tester,
         cargas: _cargas8,
@@ -127,26 +120,67 @@ void main() {
             .text,
         '8',
       );
-      expect(_blocosSelecionados(tester, 0), 2);
+      expect(
+        _resumo(tester, 0),
+        'Na grade: 2 blocos de 4 aulas seguidas. '
+        'G1: Informática · G2: Inglês.',
+      );
     });
 
-    testWidgets('cadastrar par novo: 8 aulas em 2 blocos', (tester) async {
+    testWidgets('não tem mais o campo Blocos na aula dividida', (tester) async {
+      await _abrir(
+        tester,
+        cargas: _cargas8,
+        pares: [par(informatica.id, ingles.id, aulas: 8, blocos: 2)],
+      );
+
+      expect(_porPrefixo('gem-blocos-'), findsNothing);
+    });
+
+    testWidgets('cadastrar par novo: 8 aulas com Bloco 4 = 2 blocos', (
+      tester,
+    ) async {
       final abertura = await _abrir(tester, cargas: _cargas8);
 
       await _adicionarPar(tester);
       await tester.pumpAndSettle();
+      expect(_resumo(tester, 0), isNull, reason: 'sem componentes ainda');
       await _escolherMateria(tester, 'gem-a-0', 'Informática');
       await _escolherMateria(tester, 'gem-b-0', 'Inglês');
       await tester.enterText(find.byKey(const ValueKey('gem-aulas-0')), '8');
       await tester.pumpAndSettle();
-      await _escolherBlocos(tester, 0, 2);
       await _salvar(tester);
 
       final pares = abertura.resultado!.aulasGeminadas;
       expect(pares, hasLength(1));
       expect(pares.single.quantidadePeriodos, 8);
       expect(pares.single.quantidadeBlocos, 2);
-      expect(pares.single.tamanhosBlocos, [4, 4]);
+    });
+
+    testWidgets('mudar o Bloco da carga muda a aula dividida', (tester) async {
+      final abertura = await _abrir(
+        tester,
+        cargas: [
+          carga(informatica.id, 4, bloco: 4),
+          carga(ingles.id, 4, bloco: 4),
+        ],
+        pares: [par(informatica.id, ingles.id, aulas: 4, blocos: 1)],
+      );
+      expect(
+        _resumo(tester, 0),
+        'Na grade: 1 bloco de 4 aulas seguidas. '
+        'G1: Informática · G2: Inglês.',
+      );
+
+      await _escolherBlocoCarga(tester, 0, 2);
+
+      expect(
+        _resumo(tester, 0),
+        'Na grade: 2 blocos de 2 aulas seguidas. '
+        'G1: Informática · G2: Inglês.',
+      );
+      await _salvar(tester);
+      expect(abertura.resultado!.aulasGeminadas.single.quantidadeBlocos, 2);
     });
 
     testWidgets('cargas diferentes: Informática 2 e Inglês 4', (tester) async {
@@ -159,8 +193,12 @@ void main() {
       await tester.enterText(find.byKey(const ValueKey('gem-aulas-0')), '2');
       await tester.enterText(find.byKey(const ValueKey('gem-aulas-b-0')), '4');
       await tester.pumpAndSettle();
-      // Blocos vão até a matéria maior (4 horários).
-      expect(await _opcoesBlocos(tester, 0), ['1', '2', '3', '4']);
+      // O de menos aulas fica no G1, livre nos horários que sobram.
+      expect(
+        _resumo(tester, 0),
+        'Na grade: 1 bloco de 4 aulas seguidas. '
+        'G1: Informática · G2: Inglês. O G1 fica livre em 2 horário(s).',
+      );
       await _salvar(tester);
 
       final salvo = abertura.resultado!.aulasGeminadas.single;
@@ -212,15 +250,19 @@ void main() {
     ) async {
       await _abrir(
         tester,
-        cargas: _cargas8,
+        cargas: [
+          carga(informatica.id, 8, bloco: 6),
+          carga(ingles.id, 8, bloco: 6),
+        ],
         pares: [par(informatica.id, ingles.id, aulas: 8, blocos: 2)],
         preferencia: PreferenciaPeriodo.noite,
       );
 
-      // 8 aulas em blocos de até 4: no mínimo 2 blocos.
-      expect(await _opcoesBlocos(tester, 0), [
-        '2', '3', '4', '5', '6', '7', '8',
-      ]);
+      expect(
+        _resumo(tester, 0),
+        'Na grade: 2 blocos de 4 aulas seguidas. '
+        'G1: Informática · G2: Inglês.',
+      );
     });
 
     testWidgets('trocar o turno para Noite divide blocos grandes', (
@@ -228,17 +270,23 @@ void main() {
     ) async {
       await _abrir(
         tester,
-        cargas: _cargas8,
+        cargas: [
+          carga(informatica.id, 8, bloco: 6),
+          carga(ingles.id, 8, bloco: 6),
+        ],
         pares: [par(informatica.id, ingles.id, aulas: 6, blocos: 1)],
       );
-      expect(_blocosSelecionados(tester, 0), 1);
+      expect(_resumo(tester, 0), startsWith('Na grade: 1 bloco de 6 aulas'));
 
       await tester.tap(_porPrefixo('period-'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Noite').last);
       await tester.pumpAndSettle();
 
-      expect(_blocosSelecionados(tester, 0), 2);
+      expect(
+        _resumo(tester, 0),
+        startsWith('Na grade: 2 blocos (4 + 2 aulas seguidas).'),
+      );
     });
 
     testWidgets('o (?) aparece uma vez no título de cada seção', (
@@ -258,7 +306,7 @@ void main() {
       );
 
       expect(find.byTooltip('O que é Bloco?'), findsOneWidget);
-      expect(find.byTooltip('O que é Blocos?'), findsOneWidget);
+      expect(find.byTooltip('Como fica a aula dividida?'), findsOneWidget);
     });
 
     testWidgets('as 5 opções de turno aparecem', (tester) async {
@@ -276,28 +324,22 @@ void main() {
       }
     });
 
-    testWidgets('blocos vão no máximo até o número de aulas', (tester) async {
-      await _abrir(
-        tester,
-        cargas: _cargas8,
-        pares: [par(informatica.id, ingles.id, aulas: 4, blocos: 1)],
-      );
-
-      expect(await _opcoesBlocos(tester, 0), ['1', '2', '3', '4']);
-    });
-
-    testWidgets('com mais de 6 aulas, 1 bloco não é oferecido (um turno)', (
+    testWidgets('com mais aulas que o turno, o bloco para no turno (6)', (
       tester,
     ) async {
       await _abrir(
         tester,
-        cargas: _cargas8,
+        cargas: [
+          carga(informatica.id, 8, bloco: 6),
+          carga(ingles.id, 8, bloco: 6),
+        ],
         pares: [par(informatica.id, ingles.id, aulas: 8, blocos: 2)],
       );
 
-      final opcoes = await _opcoesBlocos(tester, 0);
-      expect(opcoes.first, '2');
-      expect(opcoes.last, '8');
+      expect(
+        _resumo(tester, 0),
+        startsWith('Na grade: 2 blocos (6 + 2 aulas seguidas).'),
+      );
     });
 
     testWidgets('diminuir as aulas ajusta os blocos', (tester) async {
@@ -309,12 +351,10 @@ void main() {
 
       await tester.enterText(find.byKey(const ValueKey('gem-aulas-0')), '3');
       await tester.pumpAndSettle();
-      expect(_blocosSelecionados(tester, 0), 3);
+      expect(_resumo(tester, 0), startsWith('Na grade: 1 bloco de 3 aulas'));
     });
 
-    testWidgets('editar: trocar aulas e blocos de um par existente', (
-      tester,
-    ) async {
+    testWidgets('editar: trocar as aulas de um par existente', (tester) async {
       final abertura = await _abrir(
         tester,
         cargas: _cargas8,
@@ -323,13 +363,12 @@ void main() {
 
       await tester.enterText(find.byKey(const ValueKey('gem-aulas-0')), '6');
       await tester.pumpAndSettle();
-      await _escolherBlocos(tester, 0, 3);
       await _salvar(tester);
 
+      // 6 aulas com Bloco 4 = 4 + 2, como numa aula comum.
       final par0 = abertura.resultado!.aulasGeminadas.single;
       expect(par0.quantidadePeriodos, 6);
-      expect(par0.quantidadeBlocos, 3);
-      expect(par0.tamanhosBlocos, [2, 2, 2]);
+      expect(par0.quantidadeBlocos, 2);
     });
 
     testWidgets('editar: remover o par', (tester) async {

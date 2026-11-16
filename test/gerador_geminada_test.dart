@@ -64,9 +64,12 @@ List<List<(int, int)>> _blocos(List<(int, int)> horarios) {
 
 void main() {
   group('Aula geminada: aulas divididas em blocos', () {
-    test('8 aulas em 2 blocos = 2 conjuntos de 4 aulas, em dias diferentes', () {
+    test('8 aulas com Bloco 4 = 2 conjuntos de 4 aulas, em dias diferentes', () {
       final r = _gerar(
-        cargas: [carga(informatica.id, 8), carga(ingles.id, 8)],
+        cargas: [
+          carga(informatica.id, 8, bloco: 4),
+          carga(ingles.id, 8, bloco: 4),
+        ],
         pares: [par(informatica.id, ingles.id, aulas: 8, blocos: 2)],
       );
 
@@ -96,9 +99,12 @@ void main() {
       }
     });
 
-    test('5 aulas em 2 blocos = um bloco de 3 e um de 2', () {
+    test('5 aulas com Bloco 3 = um bloco de 3 e um de 2', () {
       final r = _gerar(
-        cargas: [carga(informatica.id, 5), carga(ingles.id, 5)],
+        cargas: [
+          carga(informatica.id, 5, bloco: 3),
+          carga(ingles.id, 5, bloco: 3),
+        ],
         pares: [par(informatica.id, ingles.id, aulas: 5, blocos: 2)],
       );
 
@@ -110,7 +116,7 @@ void main() {
       expect(tamanhos, [2, 3]);
     });
 
-    test('4 aulas em 4 blocos = 4 aulas soltas em 4 dias', () {
+    test('4 aulas com Bloco 1 = 4 aulas soltas em 4 dias', () {
       final r = _gerar(
         cargas: [carga(informatica.id, 4), carga(ingles.id, 4)],
         pares: [par(informatica.id, ingles.id, aulas: 4, blocos: 4)],
@@ -121,9 +127,12 @@ void main() {
       expect(juntos.map((h) => h.$1).toSet(), hasLength(4));
     });
 
-    test('4 aulas em 1 bloco = 4 aulas seguidas no mesmo dia', () {
+    test('4 aulas com Bloco 4 = 4 aulas seguidas no mesmo dia', () {
       final r = _gerar(
-        cargas: [carga(informatica.id, 4), carga(ingles.id, 4)],
+        cargas: [
+          carga(informatica.id, 4, bloco: 4),
+          carga(ingles.id, 4, bloco: 4),
+        ],
         pares: [par(informatica.id, ingles.id, aulas: 4, blocos: 1)],
       );
 
@@ -132,9 +141,42 @@ void main() {
       expect(blocos.single, hasLength(4));
     });
 
+    test('usa o Bloco da carga, não o número de blocos guardado no par', () {
+      // Caso real: Bloco 3 na carga, mas o par antigo guardava "3 blocos"
+      // (que virava 1 + 1 + 1). Agora sai 1 bloco de 3 seguidas.
+      final r = _gerar(
+        cargas: [
+          carga(informatica.id, 3, bloco: 3),
+          carga(ingles.id, 3, bloco: 3),
+        ],
+        pares: [par(informatica.id, ingles.id, aulas: 3, blocos: 3)],
+      );
+
+      expect(r.falhas, isEmpty);
+      final blocos = _blocos(_horariosJuntos(r.novasAulas));
+      expect(blocos.map((b) => b.length), [3]);
+    });
+
+    test('com Blocos diferentes nos dois componentes, vale o menor', () {
+      final r = _gerar(
+        cargas: [
+          carga(informatica.id, 4, bloco: 2),
+          carga(ingles.id, 4, bloco: 4),
+        ],
+        pares: [par(informatica.id, ingles.id, aulas: 4, blocos: 1)],
+      );
+
+      expect(r.falhas, isEmpty);
+      final blocos = _blocos(_horariosJuntos(r.novasAulas));
+      expect(blocos.map((b) => b.length), [2, 2]);
+    });
+
     test('bloco geminado fica inteiro dentro de um turno', () {
       final r = _gerar(
-        cargas: [carga(informatica.id, 12), carga(ingles.id, 12)],
+        cargas: [
+          carga(informatica.id, 12, bloco: 6),
+          carga(ingles.id, 12, bloco: 6),
+        ],
         pares: [par(informatica.id, ingles.id, aulas: 12, blocos: 2)],
       );
 
@@ -174,7 +216,10 @@ void main() {
 
     test('respeita a indisponibilidade dos professores', () {
       final r = _gerar(
-        cargas: [carga(informatica.id, 8), carga(ingles.id, 8)],
+        cargas: [
+          carga(informatica.id, 8, bloco: 4),
+          carga(ingles.id, 8, bloco: 4),
+        ],
         pares: [par(informatica.id, ingles.id, aulas: 8, blocos: 2)],
         indisponibilidades: [
           ...diaInteiroIndisponivel(ana.id, 0),
@@ -216,12 +261,18 @@ void main() {
       );
 
       expect(r.falhas.any((f) => f.contains('falta professor')), isTrue);
+      // A Informática não vira aula da turma inteira: fica faltando.
+      expect(r.novasAulas, isEmpty);
     });
 
-    test('avisa quando não cabe e que virou aula comum', () {
-      // Bruno só pode no 1º período de segunda: o bloco de 2 não cabe.
+    test('bloco que não cabe é dividido; o que sobra fica faltando', () {
+      // Bruno só pode no 1º período de segunda: o bloco de 2 não cabe,
+      // vira 1 + 1; só a primeira metade cabe.
       final r = _gerar(
-        cargas: [carga(informatica.id, 2), carga(ingles.id, 2)],
+        cargas: [
+          carga(informatica.id, 2, bloco: 2),
+          carga(ingles.id, 2, bloco: 2),
+        ],
         pares: [par(informatica.id, ingles.id, aulas: 2, blocos: 1)],
         indisponibilidades: [
           for (var dia = 0; dia < 5; dia++)
@@ -231,16 +282,27 @@ void main() {
         ],
       );
 
+      // Sem nomes, o gerador usa "componente <id>".
+      final nomes =
+          'componente ${informatica.id} e componente ${ingles.id}';
       expect(
-        r.falhas.any((f) => f.contains('Não coube aula dividida')),
-        isTrue,
-      );
-      expect(
-        r.falhas.any(
-          (f) => f.contains('2 horário(s); essas aulas serão tentadas como aulas comuns'),
+        r.falhas,
+        contains(
+          'Info 1: Aula dividida de $nomes: 1 horário(s) ficaram em blocos '
+          'menores que 2 (o bloco inteiro não coube).',
         ),
-        isTrue,
       );
+      expect(
+        r.falhas,
+        contains(
+          'Info 1: Faltam 1 horário(s) da aula dividida de $nomes '
+          '(não couberam com a turma dividida).',
+        ),
+      );
+      // Só o horário que coube, com a turma dividida; nada de aula da
+      // turma inteira com o que sobrou.
+      expect(_horariosJuntos(r.novasAulas), [(0, 0)]);
+      expect(r.novasAulas, hasLength(2));
     });
   });
 }

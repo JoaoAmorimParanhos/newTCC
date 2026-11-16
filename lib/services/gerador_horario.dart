@@ -60,7 +60,8 @@ class GeradorHorario {
         final cargaA = _totalNecessario(cargas, a.id);
         final cargaB = _totalNecessario(cargas, b.id);
         return cargaB.compareTo(cargaA);
-      });
+      }
+      );
 
     for (final curso in ordenados) {
       final resultado = gerar(
@@ -127,7 +128,9 @@ class GeradorHorario {
     String rotulo(String idMateria) =>
         nomesMaterias[idMateria] ?? 'componente $idMateria';
 
-    _alocarGeminadas(
+    // Aulas que pertencem a uma aula dividida mas não couberam com a turma
+    // dividida: ficam faltando, não viram aula da turma inteira.
+    final reservadas = _alocarGeminadas(
       curso: curso,
       cargasCurso: cargasCurso,
       aulasGeminadas: aulasGeminadas,
@@ -144,7 +147,8 @@ class GeradorHorario {
       final jaAlocado = trabalhando
           .where((a) => a.idCurso == idCurso && a.idMateria == carga.idMateria)
           .length;
-      var restante = carga.quantidadeAulas - jaAlocado;
+      var restante =
+          carga.quantidadeAulas - jaAlocado - (reservadas[carga.idMateria] ?? 0);
       if (restante <= 0) continue;
 
       final professoresMateria = professores
@@ -247,17 +251,9 @@ class GeradorHorario {
         .fold<int>(0, (soma, l) => soma + l.quantidadeAulas);
   }
 
-  List<int> _blocosPara(int total, int blocoPreferido) {
-    final tamanho = blocoPreferido.clamp(1, total).toInt();
-    final blocos = <int>[];
-    var restante = total;
-    while (restante > 0) {
-      final tamanhoAtual = restante >= tamanho ? tamanho : restante;
-      blocos.add(tamanhoAtual);
-      restante -= tamanhoAtual;
-    }
-    return blocos;
-  }
+  /// Mesma divisão usada na aula dividida ([blocosDeTamanho]).
+  List<int> _blocosPara(int total, int blocoPreferido) =>
+      blocosDeTamanho(total, blocoPreferido);
 
   List<List<int>> _fasesPeriodo(PreferenciaPeriodo preferencia) =>
       preferencia.turnos;
@@ -332,7 +328,10 @@ class GeradorHorario {
     return false;
   }
 
-  void _alocarGeminadas({
+  /// Coloca as aulas divididas da turma. Devolve, por componente, quantas
+  /// aulas eram de uma aula dividida e não couberam com a turma dividida:
+  /// essas ficam faltando (não viram aula da turma inteira).
+  Map<String, int> _alocarGeminadas({
     required Curso curso,
     required List<CargaCursoMateria> cargasCurso,
     required List<AulaGeminadaCurso> aulasGeminadas,
@@ -347,6 +346,16 @@ class GeradorHorario {
     final cargaPorMateria = {
       for (final carga in cargasCurso) carga.idMateria: carga.quantidadeAulas,
     };
+    // O mesmo "Bloco" (aulas seguidas) que as aulas comuns usam.
+    final blocoPorMateria = {
+      for (final carga in cargasCurso) carga.idMateria: carga.tamanhoBloco,
+    };
+    final reservadas = <String, int>{};
+    void reservar(String idMateria, int aulas) {
+      if (aulas > 0) {
+        reservadas[idMateria] = (reservadas[idMateria] ?? 0) + aulas;
+      }
+    }
 
     List<Professor> professoresDa(String idMateria) {
       return professores
@@ -369,29 +378,15 @@ class GeradorHorario {
     for (final par in aulasGeminadas.where((p) => p.idCurso == curso.id)) {
       final nomeA = rotulo(par.idMateriaA);
       final nomeB = rotulo(par.idMateriaB);
-      final professoresA = professoresDa(par.idMateriaA);
-      final professoresB = professoresDa(par.idMateriaB);
-      if (professoresA.isEmpty || professoresB.isEmpty) {
-        falhas.add(
-          'Aula dividida de $nomeA e $nomeB: falta professor em um dos componentes.',
-        );
-        continue;
-      }
-      final temProfessoresDiferentes = professoresA.any(
-        (a) => professoresB.any((b) => b.id != a.id),
-      );
-      if (!temProfessoresDiferentes) {
-        falhas.add(
-          'Aula dividida de $nomeA e $nomeB precisa de dois professores diferentes.',
-        );
-        continue;
-      }
 
-      // Cada matéria fica limitada pela própria carga ainda livre.
+      // Cada matéria fica limitada pela própria carga ainda livre (sem
+      // contar o que outra aula dividida já reservou).
       int caber(String idMateria) {
         final pedido = par.quantidadeDe(idMateria);
         final livre =
-            (cargaPorMateria[idMateria] ?? 0) - jaAlocado(idMateria);
+            (cargaPorMateria[idMateria] ?? 0) -
+            jaAlocado(idMateria) -
+            (reservadas[idMateria] ?? 0);
         final nome = rotulo(idMateria);
         if (livre < pedido) {
           falhas.add(
@@ -404,21 +399,43 @@ class GeradorHorario {
 
       final cabeA = caber(par.idMateriaA);
       final cabeB = caber(par.idMateriaB);
-      if (cabeA == 0 || cabeB == 0) continue;
-      // Nenhum bloco pode passar do tamanho do turno da turma (noite: 4).
-      // Par antigo com bloco maior é dividido em mais blocos.
-      final limite = curso.preferenciaPeriodo.maxAulasPorBloco;
-      final ocupados = cabeA > cabeB ? cabeA : cabeB;
-      final blocosMinimos = (ocupados + limite - 1) ~/ limite;
+      // Sem a aula dividida, as aulas dela ficam faltando: não viram aula
+      // da turma inteira.
+      void desistir(String motivo) {
+        falhas.add(motivo);
+        reservar(par.idMateriaA, cabeA);
+        reservar(par.idMateriaB, cabeB);
+      }
+
+      if (cabeA == 0 || cabeB == 0) {
+        reservar(par.idMateriaA, cabeA);
+        reservar(par.idMateriaB, cabeB);
+        continue;
+      }
+      final professoresA = professoresDa(par.idMateriaA);
+      final professoresB = professoresDa(par.idMateriaB);
+      if (professoresA.isEmpty || professoresB.isEmpty) {
+        desistir(
+          'Aula dividida de $nomeA e $nomeB: falta professor em um dos componentes.',
+        );
+        continue;
+      }
+      final temProfessoresDiferentes = professoresA.any(
+        (a) => professoresB.any((b) => b.id != a.id),
+      );
+      if (!temProfessoresDiferentes) {
+        desistir(
+          'Aula dividida de $nomeA e $nomeB precisa de dois professores diferentes.',
+        );
+        continue;
+      }
+
       final cabe = AulaGeminadaCurso(
         idCurso: curso.id,
         idMateriaA: par.idMateriaA,
         idMateriaB: par.idMateriaB,
         quantidadePeriodos: cabeA,
         quantidadePeriodosB: cabeB,
-        quantidadeBlocos: par.quantidadeBlocos < blocosMinimos
-            ? blocosMinimos
-            : par.quantidadeBlocos,
       );
 
       // G1 = matéria de menos aulas; G2 = a de mais aulas (fica sozinha
@@ -428,19 +445,36 @@ class GeradorHorario {
       final professoresG1 = idG1 == par.idMateriaA ? professoresA : professoresB;
       final professoresG2 = idG2 == par.idMateriaA ? professoresA : professoresB;
 
-      // Divide o par em blocos de aulas seguidas
-      // (ex.: 8 aulas em 2 blocos = 2 conjuntos de 4).
-      var faltando = 0;
-      final tamanhos = cabe.tamanhosBlocos;
-      final juntas = cabe.juntasPorBloco;
-      for (var i = 0; i < tamanhos.length; i++) {
+      // Blocos pelo Bloco da carga (como nas aulas comuns), sem passar do
+      // turno. Ex.: 3 + 3 com Bloco 3 = 1 bloco de 3 horários seguidos.
+      final formato = cabe.formato(
+        blocoDe: (idMateria) => blocoPorMateria[idMateria] ?? 1,
+        limiteTurno: curso.preferenciaPeriodo.maxAulasPorBloco,
+      );
+
+      // Bloco que não cabe é dividido ao meio (ex.: 4 → 2 + 2), como nas
+      // aulas comuns, antes de desistir dele.
+      final fila = [
+        for (var i = 0; i < formato.quantidadeBlocos; i++)
+          (
+            tamanho: formato.tamanhos[i],
+            juntas: formato.juntas[i],
+            dividido: false,
+          ),
+      ];
+      var emBlocosMenores = 0;
+      var faltaG1 = 0;
+      var faltaG2 = 0;
+      while (fila.isNotEmpty) {
+        final (tamanho: tamanho, juntas: juntas, dividido: dividido) = fila
+            .removeAt(0);
         bool tentar(List<Professor> g1, List<Professor> g2) =>
             _tentarColocarBlocoPar(
               curso: curso,
               idMateriaG1: idG1,
               idMateriaG2: idG2,
-              tamanhoBloco: tamanhos[i],
-              juntasNoBloco: juntas[i],
+              tamanhoBloco: tamanho,
+              juntasNoBloco: juntas,
               professoresG1: g1,
               professoresG2: g2,
               indisponibilidades: indisponibilidades,
@@ -471,18 +505,43 @@ class GeradorHorario {
                   usadosG2.isEmpty ? professoresG2 : usadosG2,
                 )) ||
             tentar(professoresG1, professoresG2);
-        if (!colocou) faltando += tamanhos[i];
+        if (colocou) {
+          if (dividido) emBlocosMenores += tamanho;
+        } else if (tamanho > 1) {
+          // Os horários juntos vão meio a meio (a 1ª metade fica com o
+          // que sobrar), sem passar do tamanho de cada metade.
+          final metade = (tamanho + 1) ~/ 2;
+          final juntasMetade = (juntas + 1) ~/ 2;
+          fila.insertAll(0, [
+            (tamanho: metade, juntas: juntasMetade, dividido: true),
+            (
+              tamanho: tamanho - metade,
+              juntas: juntas - juntasMetade,
+              dividido: true,
+            ),
+          ]);
+        } else {
+          faltaG1 += juntas;
+          faltaG2 += tamanho;
+        }
       }
-      if (faltando > 0) {
-        // As aulas que não couberam juntas entram depois como aulas comuns
-        // (turma inteira), se ainda houver espaço; o que nem assim couber
-        // aparece como "Faltam".
+      if (emBlocosMenores > 0) {
         falhas.add(
-          'Não coube aula dividida de $nomeA e $nomeB em $faltando '
-          'horário(s); essas aulas serão tentadas como aulas comuns.',
+          'Aula dividida de $nomeA e $nomeB: $emBlocosMenores horário(s) '
+          'ficaram em blocos menores que ${formato.tamanhos.first} '
+          '(o bloco inteiro não coube).',
+        );
+      }
+      if (faltaG2 > 0) {
+        reservar(idG1, faltaG1);
+        reservar(idG2, faltaG2);
+        falhas.add(
+          'Faltam $faltaG2 horário(s) da aula dividida de $nomeA e $nomeB '
+          '(não couberam com a turma dividida).',
         );
       }
     }
+    return reservadas;
   }
 
   /// Coloca um bloco de aulas seguidas do par, com os mesmos dois professores

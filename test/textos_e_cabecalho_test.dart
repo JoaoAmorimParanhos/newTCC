@@ -148,14 +148,18 @@ void main() {
       expect(find.text('O que é "Bloco"?'), findsNothing);
     });
 
-    testWidgets('Blocos da aula dividida mostra os grupos e o G1 livre', (
+    testWidgets('aula dividida mostra os grupos, o G1 livre e o Bloco', (
       tester,
     ) async {
       await montar(tester, const BotaoAjudaBlocosGeminada());
-      await tester.tap(find.byTooltip('O que é Blocos?'));
+      await tester.tap(find.byTooltip('Como fica a aula dividida?'));
       await tester.pumpAndSettle();
 
-      expect(find.text('O que é "Blocos" na aula dividida?'), findsOneWidget);
+      expect(find.text('Como fica a aula dividida na grade?'), findsOneWidget);
+      expect(
+        find.textContaining('usam o mesmo Bloco da carga'),
+        findsOneWidget,
+      );
       expect(find.text('G1 ADS'), findsNWidgets(2));
       expect(find.text('G2 Programação'), findsNWidgets(4));
       expect(find.text('G1 Livre'), findsNWidgets(2));
